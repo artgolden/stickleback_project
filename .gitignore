@@ -1,0 +1,14 @@
+articles/*
+data/*
+outs/*
+reports/*
+scripts/*.nb.html
+vids/
+testing/
+plots/*
+.Rhistory
+.RData
+*.RData
+*.rds
+*.nb.html
+

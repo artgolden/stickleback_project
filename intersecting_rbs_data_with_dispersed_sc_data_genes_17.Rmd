@@ -1,0 +1,70 @@
+---
+title: "intersecting_rbs_data_with_dispersed_sc_data_genes_17"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+library(Seurat)
+library(biomaRt)
+library(GenomicRanges)
+```
+
+```{r get_all_gene_coords_in_f_score_list}
+ensembl <- useEnsembl(biomart = "ensembl")
+ensembl <- useDataset(dataset = "gaculeatus_gene_ensembl", mart = ensembl)
+
+# data/f.test.filtered.blood.tsv file was augmented MANUALLY!
+f.test.filtered.blood <- read_table2(file = "data/f.test.filtered.blood.tsv")
+all_genes_coords <- getBM(attributes=c('ensembl_gene_id', 'chromosome_name', 'start_position', 'end_position', 'strand'),
+      filters=c('ensembl_gene_id'),
+      values=f.test.filtered.blood$ensembl_gene_id,
+      mart=ensembl)
+```
+
+```{r all_gene_coords_to_start_region}
+BASES_FROM_START = 1000
+
+all_genes_coords <-  rename(all_genes_coords, chr = chromosome_name, start = start_position, end = end_position)
+all_genes_coords <- merge(all_genes_coords, f.test.filtered.blood, by = "ensembl_gene_id")
+# Choose only region around start of the gene
+all_genes_coords <- mutate(all_genes_coords, start = start - BASES_FROM_START, end = start + BASES_FROM_START)
+all_genes_coords <- mutate(all_genes_coords, strand = ifelse(strand < 0, "-", "+"))
+all_genes_coords %>%  filter(str_detect(chr, "group")) %>% 
+  mutate(chr = str_remove(chr, "group")) -> all_genes_coords
+```
+
+```{r top_f_test_to_genomicRanges}
+all_genes_coords %>% top_n(f_ratio, n = 100) %>% 
+      makeGRangesFromDataFrame() -> f_top_ranges
+```
+
+```{r methylation_data_to_genomicRanges}
+methylation_data <- read_csv(file = "data/DMR_MM_FF.csv")
+methylation_data <- rename_at(methylation_data, vars(starts_with("DMR.")), ~str_replace(., "DMR.", ""))
+methylation_data %>% filter(str_detect(chr, "Un", negate = TRUE)) %>% 
+  mutate(chr = str_remove(chr, "chr")) -> methylation_data 
+methylation_ranges <- makeGRangesFromDataFrame(methylation_data)
+```
+
+```{r test_overlap_of_all_from_f_list}
+
+all_genes_coords %>% makeGRangesFromDataFrame() -> all_ranges
+hits <- findOverlaps(methylation_ranges, all_ranges, ignore.strand=TRUE)
+
+```
+
+### There is no overlap between methylation regions and regulatory regions from f-tested gene list
+
+### Overlap by ENSEMBL IDs
+
+```{r}
+paste0(intersect(methylation_data$gene.ensg, f.test.filtered.blood$ensembl_gene_id))
+```
+

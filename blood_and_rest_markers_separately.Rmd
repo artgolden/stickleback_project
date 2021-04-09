@@ -1,0 +1,116 @@
+---
+title: "Blood and the rest cell type analysed for markers separately"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(ggplot2)
+library(dplyr)
+library(Seurat)
+```
+
+```{r}
+#=================================== Separate clusters ==========================================
+load(file = "data/rna.integrated.filtered.after.clustering.obj.RData")
+rna.integrated.cluster.blood <- subset(rna.integrated, idents = 0)
+rna.integrated.cluster.rest <- subset(rna.integrated, idents = c(1,2))
+```
+
+### Blood cluster reclustered with resolution 0.3
+
+```{r}
+#=========================== Blood cluster UMAP plot  =================================
+rna.integrated.cluster.blood <- FindNeighbors(rna.integrated.cluster.blood, dims = 1:15)
+rna.integrated.cluster.blood  <- FindClusters(rna.integrated.cluster.blood, resolution = 0.3)
+rna.integrated.cluster.blood <- RunUMAP(rna.integrated.cluster.blood, dims = 1:15)
+DimPlot(rna.integrated.cluster.blood, reduction = "umap")
+```
+
+```{r}
+#=========================== Blood cluster markers  =================================
+
+markers_0.3.rna.integrated.cluster.blood  <- FindAllMarkers(rna.integrated.cluster.blood, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.15)
+write.csv(markers_0.3.rna.integrated.cluster.blood, file = "data/stickleback.rna.batch.corrected.res_0.3_markers.blood.csv")
+# markers_0.3.rna.integrated.cluster.blood <- read.csv(file = "data/stickleback.rna.batch.corrected.res_0.3_markers.blood.csv")
+
+#top for each cluster
+markers_0.3.rna.integrated.cluster.blood %>% group_by(cluster) %>% select(avg_logFC, p_val_adj, cluster, gene) %>% top_n(n = 4, wt = avg_logFC)
+```
+
+### Rest of the cells clustered with resolution 0.15
+
+```{r}
+#=========================== Rest cluster UMAP plot  =================================
+rna.integrated.cluster.rest <- FindNeighbors(rna.integrated.cluster.rest, dims = 1:15)
+rna.integrated.cluster.rest  <- FindClusters(rna.integrated.cluster.rest, resolution = 0.15)
+rna.integrated.cluster.rest <- RunUMAP(rna.integrated.cluster.rest, dims = 1:15)
+DimPlot(rna.integrated.cluster.rest, reduction = "umap")
+```
+
+### Rest cells res = 0.15 markers
+
+```{r}
+#=========================== Rest cluster markers resoluiton 0.15 =================================
+
+markers_0.15.rna.integrated.cluster.rest  <- FindAllMarkers(rna.integrated.cluster.rest, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.15)
+write.csv(markers_0.15.rna.integrated.cluster.rest, file = "data/stickleback.rna.batch.corrected.res_0.15_markers.rest.csv")
+# markers_0.3.rna.integrated.cluster.rest <- read.csv(file = "data/stickleback.rna.batch.corrected.res_0.15_markers.rest.csv")
+
+#top for each cluster
+markers_0.15.rna.integrated.cluster.rest %>% group_by(cluster) %>% select(avg_logFC, p_val_adj, cluster, gene) %>% top_n(n = 4, wt = avg_logFC)
+```
+
+### Rest of the cells clustered with resolution 0.1
+
+```{r}
+rna.integrated.cluster.rest  <- FindClusters(rna.integrated.cluster.rest, resolution = 0.1)
+DimPlot(rna.integrated.cluster.rest, reduction = "umap")
+```
+
+### Rest cells res = 0.1 markers
+
+```{r}
+#=========================== Rest cluster markers resoluiton 0.15 =================================
+
+markers_0.1.rna.integrated.cluster.rest  <- FindAllMarkers(rna.integrated.cluster.rest, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.15)
+write.csv(markers_0.1.rna.integrated.cluster.rest, file = "data/stickleback.rna.batch.corrected.res_0.1_markers.rest.csv")
+# markers_0.3.rna.integrated.cluster.rest <- read.csv(file = "data/stickleback.rna.batch.corrected.res_0.1_markers.rest.csv")
+
+#top for each cluster
+markers_0.1.rna.integrated.cluster.rest %>% group_by(cluster) %>% select(avg_logFC, p_val_adj, cluster, gene) %>% top_n(n = 4, wt = avg_logFC)
+```
+
+```{r}
+#=================================== CUSTER MARKER DISTRIBUTION =============================================
+VlnPlot(rna.integrated.cluster.rest, features = c("atp1a1a.4"))
+
+FeaturePlot(rna.integrated.cluster.rest, features = c("atp1a1a.4"))
+```
+
+```{r}
+#======================== CUSTER MARKER DISTRIBUTION EXAMPLE PDF================================
+pdf(file = "plots/cluster_markers_example_distribution_2.pdf")
+DimPlot(rna.integrated, reduction = "umap")
+
+FeaturePlot(rna.integrated, features = c("atp1a1a.4"), min.cutoff = 0)
+DimPlot(rna.integrated.cluster.rest, reduction = "umap")
+VlnPlot(rna.integrated.cluster.rest, features = c("atp1a1a.4"))
+FeaturePlot(rna.integrated.cluster.rest, features = c("atp1a1a.4"), min.cutoff = 0)
+dev.off()
+```
+
+```{r}
+#======================== apoeb MARKER DISTRIBUTION in samples ================================
+pdf(file = "plots/apoeb_distribution_in_samples.pdf", width = 9)
+VlnPlot(rna.integrated.cluster.rest, features = c("apoeb"), group.by = "orig.ident")
+DimPlot(rna.integrated.cluster.rest, reduction = "umap", group.by = "orig.ident")
+
+FeaturePlot(rna.integrated.cluster.rest, features = c("apoeb"), min.cutoff = 0)
+dev.off()
+```
+

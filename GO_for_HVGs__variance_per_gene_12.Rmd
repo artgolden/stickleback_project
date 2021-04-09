@@ -1,0 +1,167 @@
+---
+title: "HVGs different for saline vs freshwater GO analysis; measuring variance within saline/freshwater based on per gene variance"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(ggplot2)
+library(dplyr)
+library(Seurat)
+```
+
+
+```{r extracting_HVGs_for_each_sample_separately}
+stickleback.rna.comb <- readRDS(file = "data/stickleback.rna.seurat.samples.PURE_ENSEMBLE.rds")
+rna.list <- SplitObject(stickleback.rna.comb, split.by = "orig.ident")
+vst.list <- data.frame()
+vst_one <- data.frame()
+for (i in 1:length(rna.list)) {
+    rna.list[[i]] <- NormalizeData(rna.list[[i]], verbose = FALSE)
+    rna.list[[i]] <- FindVariableFeatures(rna.list[[i]], selection.method = "vst", 
+        nfeatures = 2000, verbose = FALSE)
+    tmp.frame <- data.frame(sample_vst = rna.list[[i]]@assays[["RNA"]]@meta.features[["vst.variance.standardized"]],
+                            sample_ids = rna.list[[i]]@assays[["RNA"]]@counts@Dimnames[[1]])
+    tmp.frame <- subset(tmp.frame, sample_ids %in% rna.list[[i]]@assays[["RNA"]]@var.features)
+    tmp.frame <- tmp.frame[order(-tmp.frame$sample_vst),]
+    tmp.frame <- mutate(tmp.frame, ID = row_number())
+    tmp.frame$sample <- paste0("sample_", i)
+    if(length(vst_one) == 0){
+      
+      vst_one <- tmp.frame
+    }
+    else{
+      vst_one <- rbind(vst_one, tmp.frame)
+    }
+    tmp.frame$sample <- NULL
+    
+    colrenames <- c(paste0("sample_", i, "_variance_std"), paste0("sample_", i, "_ids"), "ID")
+    colnames(tmp.frame) <- colrenames
+    if(length(vst.list) == 0){
+      vst.list <- tmp.frame
+    }
+    else{
+      vst.list <- merge(vst.list, tmp.frame, by = "ID")
+    }
+}
+# write.table(vst.list, file = "data/top_2000_HVGs_for_each_sample.tsv", sep = "\t")
+head(vst.list, 50)
+```
+
+```{r stickleback_to_zebrafish_IDs_function}
+conversion_table <- read.table(file = "data/stickleback_zebrafish_orthologs.tsv", sep = "\t", header = TRUE)
+stickleback_to_zebrafish_IDs <- function(stickleback_ensembl_ids, conversion_table, id_type="zebrafish_ensembl"){
+  conversion_table <- merge(data.frame(stickleback_ensembl = stickleback_ensembl_ids), conversion_table, by="stickleback_ensembl", sort=FALSE)
+  zebrafish_ids <- conversion_table[,id_type]
+  return(zebrafish_ids)
+}
+```
+
+### GO enrichment with conversion to Zebrafish orthologs, background = union of all HVGs for all samples
+
+```{r GO_enrichment_watertype_specific_HVGs}
+# GO enrichment for HVGs common for freshwater and saline
+saline_specific_HVGs <- stickleback_to_zebrafish_IDs(setdiff(intersect(vst.list$sample_1_ids,
+                                                                       vst.list$sample_2_ids),
+                                                             union(vst.list$sample_3_ids,
+                                                                   vst.list$sample_4_ids)), conversion_table)
+freshwater_specific_HVGs <- stickleback_to_zebrafish_IDs(setdiff(intersect(vst.list$sample_3_ids,
+                                                                           vst.list$sample_4_ids),
+                                                                 union(vst.list$sample_1_ids,
+                                                                       vst.list$sample_2_ids)), conversion_table)
+hvg_union_background <- stickleback_to_zebrafish_IDs(c(vst.list$sample_1_ids,
+                                                       vst.list$sample_2_ids,
+                                                       vst.list$sample_3_ids,
+                                                       vst.list$sample_4_ids), conversion_table)
+write.table(hvg_union_background, file = "data/hvg_union_background.tsv", sep = "\t")
+
+# BiocManager::install("org.Dr.eg.db")
+require(clusterProfiler)
+saline_GO <- enrichGO(gene = saline_specific_HVGs,
+                OrgDb         = "org.Dr.eg.db",
+                keyType       = 'ENSEMBL',
+                pAdjustMethod = "BH",
+                pvalueCutoff = 1,
+                qvalueCutoff=1,
+                universe = hvg_union_background)
+freshwater_GO <- enrichGO(gene = freshwater_specific_HVGs,
+                OrgDb         = "org.Dr.eg.db",
+                keyType       = 'ENSEMBL',
+                pAdjustMethod = "BH",
+                pvalueCutoff = 1,
+                qvalueCutoff=1,
+                universe = hvg_union_background)
+```
+
+   
+```{r GO_enrichment_plots, fig.width=12}
+# Top of GO enrichment terms for oppositely changing genes between samples
+require(enrichplot)
+dotplot(saline_GO, showCategory = 30,
+        title = "top 30 GO terms, saline_GO")
+dotplot(freshwater_GO, showCategory = 30,
+        title = "top 30 GO terms, freshwater_GO")
+```
+
+### Comparing variance for each gene 
+
+
+```{r}
+hvg_union <- unique(c(vst.list$sample_1_ids,
+               vst.list$sample_2_ids,
+               vst.list$sample_3_ids,
+               vst.list$sample_4_ids))
+
+hvg_counts_sample_1 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.1"]]@assays[["RNA"]]@data[rownames(rna.list[["stickleback.sample.1"]]@assays[["RNA"]]@data) %in% hvg_union,]))
+hvg_counts_sample_2 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.2"]]@assays[["RNA"]]@data[rownames(rna.list[["stickleback.sample.2"]]@assays[["RNA"]]@data) %in% hvg_union,]))
+hvg_counts_sample_3 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.3"]]@assays[["RNA"]]@data[rownames(rna.list[["stickleback.sample.3"]]@assays[["RNA"]]@data) %in% hvg_union,]))
+hvg_counts_sample_4 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.4"]]@assays[["RNA"]]@data[rownames(rna.list[["stickleback.sample.4"]]@assays[["RNA"]]@data) %in% hvg_union,]))
+
+hvg_counts_saline <- merge(hvg_counts_sample_1, hvg_counts_sample_2, by="rowname")
+hvg_counts_freshwater <- merge(hvg_counts_sample_3, hvg_counts_sample_4, by="rowname")
+```
+
+
+
+```{r}
+hvg_counts_all <- merge(hvg_counts_saline, hvg_counts_freshwater, by="rowname")
+saline_right_boundary <- length(hvg_counts_saline) - 1
+freshwater_left_boundary <- saline_right_boundary + 1 - 1
+freshwater_right_boundary <- saline_right_boundary + length(hvg_counts_freshwater) - 1 - 1
+
+output <- apply(hvg_counts_all[,2:freshwater_right_boundary], 1, function(row){
+  # message(paste0("row = ", row))
+  x <- row[1:saline_right_boundary]
+  x <- x[x != 0]
+  y <- row[freshwater_left_boundary:freshwater_right_boundary]
+  y <- y[y != 0]
+  if(length(x) > 10 & length(y) > 10){
+    f.test.res <- var.test(x, y)
+    return(data.frame(f_ratio = f.test.res$estimate, p_val = f.test.res$p.value))
+  }else{
+    return(data.frame(f_ratio = NA, p_val = NA))
+  }
+  
+  # return(data.frame(test = sum(row[1:saline_right_boundary]), test.l.1 = length(row[1:saline_right_boundary]), test.l.2 = length(row[freshwater_left_boundary:freshwater_right_boundary])))
+})
+f.test.frame <- do.call(rbind,output)
+rownames(f.test.frame) <- hvg_counts_all$rowname
+
+```
+
+### F-test for dispersion difference between saline and freshwater counts per each gene
+
+```{r}
+f.test.filtered <- subset(f.test.frame, p_val < 0.05 & f_ratio > 0 & f_ratio != Inf & p_val != 0)
+# head(f.test.filtered, 10)
+write.table(f.test.filtered, file = "data/f.test.filtered.tsv", sep = '\t')
+f.test.filtered
+```
+
+```{r}
+paste0("median of f_ratio (saline/freshwater) = ", median(f.test.filtered$f_ratio))
+```

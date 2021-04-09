@@ -1,0 +1,104 @@
+---
+title: "Testing Signac"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(patchwork)
+set.seed(42)
+```
+
+```{r}
+counts <- Read10X_h5("data/test_signac/atac_v1_adult_brain_fresh_5k_filtered_peak_bc_matrix.h5")
+```
+
+```{r}
+metadata <- read.csv(
+  file = "data/test_signac/atac_v1_adult_brain_fresh_5k_singlecell.csv",
+  header = TRUE,
+  row.names = 1
+)
+
+brain_assay <- CreateChromatinAssay(
+  counts = counts,
+  sep = c(":", "-"),
+  genome = "mm10",
+  fragments = 'data/test_signac/atac_v1_adult_brain_fresh_5k_fragments.tsv.gz',
+  min.cells = 1
+)
+```
+
+```{r}
+library(EnsDb.Mmusculus.v79)
+annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79)
+```
+
+```{r}
+#' @param ensdb An EnsDb object
+#' @param standard.chromosomes Keep only standard chromosomes
+#' @param biotypes Biotypes to keep
+#' @param verbose Display messages
+#'
+#' @importFrom biovizBase crunch
+#' @importFrom GenomeInfoDb keepStandardChromosomes seqinfo
+#' @concept utilities
+#' @export
+library(biovizBase)
+library(GenomeInfoDb)
+
+# GetGRangesFromEnsDb <- function(
+  ensdb = EnsDb.Mmusculus.v79
+  standard.chromosomes = TRUE
+  biotypes = c("protein_coding", "lincRNA", "rRNA", "processed_transcript")
+  verbose = TRUE
+# ) {
+  # convert seqinfo to granges
+  whole.genome <-  as(object = seqinfo(x = ensdb), Class = "GRanges")
+  whole.genome <- keepStandardChromosomes(whole.genome, pruning.mode = "coarse")
+
+  # extract genes from each chromosome
+  if (verbose) {
+    tx <- sapply(X = seq_along(whole.genome), FUN = function(x){
+      crunch(
+        obj = ensdb,
+        which = whole.genome[x])
+    })
+  } else {
+    tx <- sapply(X = seq_along(whole.genome), FUN = function(x){
+      suppressMessages(expr = crunch(
+        obj = ensdb,
+        which = whole.genome[x],
+        columns = c("tx_id", "gene_name", "gene_id", "gene_biotype")))
+    })
+  }
+
+  # combine
+  tx <- do.call(what = c, args = tx)
+  tx <- tx[tx$gene_biotype %in% biotypes]
+  # return(tx)
+# }
+```
+
+
+```{r}
+ ensDb_crunch_test <- crunch(
+        obj = ensdb,
+        which = whole.genome[1],
+        columns = c("tx_id", "gene_name", "gene_id", "gene_biotype"))
+```
+
+```{r}
+
+```
+
+
+

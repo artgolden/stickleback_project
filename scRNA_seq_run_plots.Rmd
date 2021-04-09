@@ -1,0 +1,44 @@
+---
+title: "scRNA-seq sequencing run plots"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/data/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(ggplot2)
+library(dplyr)
+library(Seurat)
+```
+
+```{r}
+run.parameters <- data.frame(
+  sample = c("cDNA1", "cDNA2", "cDNA3", "cDNA4"),
+  n_cells = c(2359, 9631, 4649, 4835),
+  n_reads = c(281045594,342501355,237566743,272792633),
+  mean_reads = c(119138, 35562, 51101, 56420),
+  median_genes = c(278, 240, 184, 185)
+)
+```
+
+```{r}
+p <- ggplot(run.parameters, aes(n_reads, n_cells)) +
+  geom_point() +
+  geom_smooth(method=lm, se=FALSE) +
+  xlab("Reads per sample")+
+  ylab("Cells per sample")
+p
+```
+
+```{r}
+p <- ggplot(run.parameters, aes(n_reads, median_genes)) +
+  geom_point() +
+  geom_smooth(method=lm, se=FALSE) +
+  xlab("Reads per sample")+
+  ylab("Median genes per cell")
+p
+```
+

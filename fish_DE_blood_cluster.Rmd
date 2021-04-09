@@ -1,0 +1,63 @@
+---
+title: "DE in blood cluster saline vs freshwater"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(ggplot2)
+library(dplyr)
+library(Seurat)
+```
+
+```{r}
+#=================================== Separate clusters ==========================================
+load(file = "data/rna.integrated.filtered.after.clustering.obj.RData")
+rna.integrated.cluster.blood <- subset(rna.integrated, idents = 0)
+```
+
+
+
+```{r}
+#=========================== Blood cluster UMAP plot  =================================
+rna.integrated.cluster.blood <- FindNeighbors(rna.integrated.cluster.blood, dims = 1:15)
+rna.integrated.cluster.blood  <- FindClusters(rna.integrated.cluster.blood, resolution = 0.3)
+rna.integrated.cluster.blood <- RunUMAP(rna.integrated.cluster.blood, dims = 1:15)
+```
+
+### Top 15 differentially expressed genes between fresh and saline water stickleback in blood cluster
+
+```{r}
+# create new Idents: saline/freshwater
+samples.to.water.type <- data.frame("samples" = c("stickleback.sample.1",
+                                                  "stickleback.sample.2",
+                                                  "stickleback.sample.3",
+                                                  "stickleback.sample.4"),
+                                    "water.type" = c("fresh",
+                                                     "fresh",
+                                                     "saline",
+                                                     "saline"))
+
+rna.integrated.cluster.blood$salinity <- merge(data.frame(rna.integrated.cluster.blood$orig.ident),
+                                               samples.to.water.type,
+                                               by.x="rna.integrated.cluster.blood.orig.ident",
+                                               by.y="samples")$water.type
+Idents(rna.integrated.cluster.blood) <- "salinity"
+DE.blood.by.salinity <- FindMarkers(rna.integrated.cluster.blood, ident.1 = "fresh", ident.2 = "saline", verbose = FALSE)
+write.csv(DE.blood.by.salinity, file = "data/DEGs.blood.by.salinity.csv")
+DE.blood.by.salinity.all <- FindMarkers(rna.integrated.cluster.blood, ident.1 = "fresh", ident.2 = "saline", verbose = FALSE, logfc.threshold = 0)
+write.csv(DE.blood.by.salinity.all, file = "data/DEGs.blood.by.salinity.all.csv")
+head(DE.blood.by.salinity, n = 15)
+```
+
+## Blood cluster with cells divided by water salinity
+
+```{r}
+DimPlot(rna.integrated.cluster.blood, reduction = "umap", group.by = "salinity")
+```
+
+

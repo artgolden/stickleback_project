@@ -1,0 +1,259 @@
+---
+title: "GO with F-test output; F-test for blood cluster separately; scRNA vs bulk blood ratio estimation"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(ggplot2)
+library(dplyr)
+library(Seurat)
+```
+
+```{r stickleback_to_zebrafish_IDs_function}
+conversion_table <- read.table(file = "data/stickleback_zebrafish_orthologs.tsv", sep = "\t", header = TRUE)
+stickleback_to_zebrafish_IDs <- function(stickleback_ensembl_ids, conversion_table, id_type="zebrafish_ensembl"){
+  conversion_table <- merge(data.frame(stickleback_ensembl = stickleback_ensembl_ids), conversion_table, by="stickleback_ensembl", sort=FALSE)
+  zebrafish_ids <- conversion_table[,id_type]
+  return(zebrafish_ids)
+}
+```
+
+```{r}
+NUMBER_OF_GENES_FROM_TOP_AND_BOTTOM = 100
+
+
+f.test.filtered <- read.table(file = "data/f.test.filtered.tsv", sep = '\t')
+tmp_ids <- stickleback_to_zebrafish_IDs(rownames(f.test.filtered), conversion_table = conversion_table)
+f.test.filtered <-tibble::rownames_to_column(f.test.filtered)
+f.test.filtered <- merge(f.test.filtered, conversion_table, by.x = "rowname", by.y = "stickleback_ensembl")
+
+f.test.top <- head(arrange(f.test.filtered,desc(f_ratio)), n = NUMBER_OF_GENES_FROM_TOP_AND_BOTTOM)
+f.test.bottom <- tail(arrange(f.test.filtered,desc(f_ratio)), n = NUMBER_OF_GENES_FROM_TOP_AND_BOTTOM)
+```
+
+
+```{r GO_low_high_dispergent_genes}
+
+
+
+hvg_union_background <- read.table(file = "data/hvg_union_background.tsv", sep = "\t")$x
+require(clusterProfiler)
+f.test.top.GO <- enrichGO(gene = f.test.top$zebrafish_ensembl,
+                OrgDb         = "org.Dr.eg.db",
+                keyType       = 'ENSEMBL',
+                pAdjustMethod = "BH",
+                pvalueCutoff = 1,
+                qvalueCutoff=1,
+                universe = hvg_union_background)
+f.test.bottom.GO <- enrichGO(gene = f.test.bottom$zebrafish_ensembl,
+                OrgDb         = "org.Dr.eg.db",
+                keyType       = 'ENSEMBL',
+                pAdjustMethod = "BH",
+                pvalueCutoff = 1,
+                qvalueCutoff=1,
+                universe = hvg_union_background)
+```
+
+### GO for top and bottom `r NUMBER_OF_GENES_FROM_TOP_AND_BOTTOM` genes of the F-test dispersion table
+
+```{r GO_enrichment_plots, fig.width=12}
+# Top of GO enrichment terms for oppositely changing genes between samplesы 
+require(enrichplot)
+dotplot(f.test.top.GO, showCategory = 30,
+        title = "top 30 GO terms, f.test.top.GO")
+dotplot(f.test.bottom.GO, showCategory = 30,
+        title = "top 30 GO terms, f.test.bottom.GO")
+```
+
+```{r subsetting_blood_for_each_sample_and_HVGs}
+load(file = "data/rna.integrated.filtered.after.clustering.obj.RData")
+rna.integrated.cluster.blood <- subset(rna.integrated, idents = 0)
+blood_cells_ids <- rna.integrated.cluster.blood@assays[["RNA"]]@counts@Dimnames[[2]]
+# blood_cells_ids <- paste(blood_cells_ids, rep("-1", length(blood_cells_ids)), sep = "") 
+
+
+stickleback.rna.comb <- readRDS(file = "data/stickleback.rna.seurat.samples.PURE_ENSEMBLE.rds")
+rna.list <- SplitObject(stickleback.rna.comb, split.by = "orig.ident")
+vst.list <- data.frame()
+vst_one <- data.frame()
+for (i in 1:length(rna.list)) {
+    # cells_to_keep <- gsub("-1", "", rna.list[[i]]@assays[["RNA"]]@counts@Dimnames[[2]])
+    cells_to_keep <- rna.list[[i]]@assays[["RNA"]]@counts@Dimnames[[2]]
+    cells_to_keep <- subset(cells_to_keep, cells_to_keep %in% blood_cells_ids)
+    rna.list[[i]] <- subset(rna.list[[i]], cells = cells_to_keep)
+    rna.list[[i]] <- NormalizeData(rna.list[[i]], verbose = FALSE)
+    rna.list[[i]] <- FindVariableFeatures(rna.list[[i]], selection.method = "vst", 
+        nfeatures = 2000, verbose = FALSE)
+    tmp.frame <- data.frame(sample_vst = rna.list[[i]]@assays[["RNA"]]@meta.features[["vst.variance.standardized"]],
+                            sample_ids = rna.list[[i]]@assays[["RNA"]]@counts@Dimnames[[1]])
+    tmp.frame <- subset(tmp.frame, sample_ids %in% rna.list[[i]]@assays[["RNA"]]@var.features)
+    tmp.frame <- tmp.frame[order(-tmp.frame$sample_vst),]
+    tmp.frame <- mutate(tmp.frame, ID = row_number())
+    tmp.frame$sample <- paste0("sample_", i)
+    if(length(vst_one) == 0){
+      
+      vst_one <- tmp.frame
+    }
+    else{
+      vst_one <- rbind(vst_one, tmp.frame)
+    }
+    tmp.frame$sample <- NULL
+    
+    colrenames <- c(paste0("sample_", i, "_variance_std"), paste0("sample_", i, "_ids"), "ID")
+    colnames(tmp.frame) <- colrenames
+    if(length(vst.list) == 0){
+      vst.list <- tmp.frame
+    }
+    else{
+      vst.list <- merge(vst.list, tmp.frame, by = "ID")
+    }
+}
+# write.table(vst.list, file = "data/top_2000_HVGs_for_each_sample.tsv", sep = "\t")
+# head(vst.list, 50)
+```
+
+
+```{r}
+hvg_union <- unique(c(vst.list$sample_1_ids,
+               vst.list$sample_2_ids,
+               vst.list$sample_3_ids,
+               vst.list$sample_4_ids))
+
+hvg_counts_sample_1 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.1"]]@assays[["RNA"]]@counts[rownames(rna.list[["stickleback.sample.1"]]@assays[["RNA"]]@counts) %in% hvg_union,]))
+hvg_counts_sample_2 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.2"]]@assays[["RNA"]]@counts[rownames(rna.list[["stickleback.sample.2"]]@assays[["RNA"]]@counts) %in% hvg_union,]))
+hvg_counts_sample_3 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.3"]]@assays[["RNA"]]@counts[rownames(rna.list[["stickleback.sample.3"]]@assays[["RNA"]]@counts) %in% hvg_union,]))
+hvg_counts_sample_4 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.4"]]@assays[["RNA"]]@counts[rownames(rna.list[["stickleback.sample.4"]]@assays[["RNA"]]@counts) %in% hvg_union,]))
+
+hvg_counts_saline <- merge(hvg_counts_sample_1, hvg_counts_sample_2, by="rowname")
+hvg_counts_freshwater <- merge(hvg_counts_sample_3, hvg_counts_sample_4, by="rowname")
+```
+
+
+```{r}
+hvg_counts_all <- merge(hvg_counts_saline, hvg_counts_freshwater, by="rowname")
+saline_right_boundary <- length(hvg_counts_saline) - 1
+freshwater_left_boundary <- saline_right_boundary + 1 - 1
+freshwater_right_boundary <- saline_right_boundary + length(hvg_counts_freshwater) - 1 - 1
+
+output <- apply(hvg_counts_all[,2:freshwater_right_boundary], 1, function(row){
+  # message(paste0("row = ", row))
+  x <- row[1:saline_right_boundary]
+  x <- x[x != 0]
+  y <- row[freshwater_left_boundary:(freshwater_right_boundary)]
+  y <- y[y != 0]
+  if(length(x) > 10 & length(y) > 10){
+    f.test.res <- var.test(x, y)
+    return(data.frame(f_ratio = f.test.res$estimate, p_val = f.test.res$p.value))
+  }else{
+    return(data.frame(f_ratio = NA, p_val = NA))
+  }
+  
+  # return(data.frame(test = sum(row[1:saline_right_boundary]), test.l.1 = length(row[1:saline_right_boundary]), test.l.2 = length(row[freshwater_left_boundary:freshwater_right_boundary])))
+})
+f.test.frame <- do.call(rbind,output)
+rownames(f.test.frame) <- hvg_counts_all$rowname
+
+```
+
+```{r}
+save(hvg_counts_saline, hvg_counts_freshwater, file = "data/hvg_counts_for_var_table.RData")
+```
+
+
+
+### F-test for dispersion for blood cluster cells separately
+
+```{r f_test_for_blood_cluster}
+f.test.filtered.blood <- subset(f.test.frame, p_val < 0.05 & f_ratio > 0 & f_ratio != Inf & p_val != 0)
+# head(f.test.filtered, 10)
+write.table(f.test.filtered.blood, file = "data/f.test.filtered.blood.tsv", sep = '\t')
+f.test.filtered.blood
+```
+
+```{r}
+f.test.filtered <- read.table(file = "data/f.test.filtered.tsv", sep = "\t")
+f.test.filtered <- f.test.filtered[order(-f.test.filtered$f_ratio),]
+f.test.filtered.blood <- f.test.filtered.blood[order(-f.test.filtered.blood$f_ratio),]
+
+# length(intersect(rownames(top_n(f.test.filtered, 100, f_ratio)), rownames(top_n(f.test.filtered.blood, 100, f_ratio))))
+# length(intersect(rownames(top_n(f.test.filtered, -100, f_ratio)), rownames(top_n(f.test.filtered.blood, -100, f_ratio))))
+# mean(f.test.filtered$f_ratio)/mean(f.test.filtered.blood$f_ratio)
+overlap_ratio <- length(intersect(rownames(f.test.filtered), rownames(f.test.filtered.blood)))/ min(nrow(f.test.filtered), nrow(f.test.filtered.blood))
+paste0("overlap ratio between blood cluster f-test gene table and all data = ", overlap_ratio)
+```
+
+
+
+```{r}
+paste0("median of f_ratio (saline/freshwater blood cells) = ", median(f.test.filtered.blood$f_ratio))
+```
+
+```{r}
+f.test.filtered <- read.table(file = "data/f.test.filtered.tsv", sep = '\t')
+paste0("median of f_ratio (saline/freshwater ALL cells) = ", median(f.test.filtered$f_ratio))
+```
+
+### Blood ratio between bulk and single cell data (via a hemoglobin gene expression ration)
+
+```{r actin_hemoglobin_genes}
+# conversion_table[conversion_table$zebrafish_gene_name == "actb1",]
+# stickleback_ids <- read.table(file = "data/10X_features.tsv", sep = "\t")
+# stickleback_ids[stickleback_ids$V1 == "ENSGACG00000016593",]
+
+actin_ids <- conversion_table[conversion_table$zebrafish_gene_name == "actb1",]$stickleback_ensembl
+actin_ids <- c(actin_ids, c("ENSGACG00000007836"))
+hem_contaning_genes <- c("ENSGACG00000013918", "ENSGACG00000013895", "ENSGACG00000014492")
+```
+
+```{r geting_hemoglobin_and_actin_counts}
+# Stickleback single cell all counts
+stickleback.rna.comb <- readRDS(file = "data/stickleback.rna.seurat.samples.PURE_ENSEMBLE.rds")
+stickleback_all_counts <- as.data.frame(stickleback.rna.comb@assays[["RNA"]]@counts)
+
+# Stickleback bulk all counts
+bulk_counts <- as.data.frame(readxl::read_xlsx("data/msx156_Supp/S5A_table_RNAseq_rawcounts.xlsx"))[,c("...1","MM2", "MM3", "MM4", "MM5", "FF1", "FF2", "FF4", "FF5")]
+rownames(bulk_counts) <- bulk_counts$...1 
+bulk_counts$...1 <- NULL
+
+
+sc_actin <- stickleback_all_counts[actin_ids,]
+sc_actin <- apply(sc_actin, 1, sum)
+sc_actin <- mean(sc_actin) # taking the highest expressed actin
+sc_hem <- stickleback_all_counts[hem_contaning_genes,]
+sc_hem <- apply(sc_hem, 1, sum)
+sc_hem <- mean(sc_hem)
+sc_ratio <- sc_hem/sc_actin
+
+bulk_actin <- bulk_counts[actin_ids,]
+bulk_actin <- apply(bulk_actin, 1, sum)
+bulk_actin <- mean(bulk_actin) # taking the highest expressed actin
+bulk_hem <- bulk_counts[hem_contaning_genes,]
+bulk_hem <- apply(bulk_hem, 1, sum)
+bulk_hem <- mean(bulk_hem)
+bulk_ratio <- bulk_hem/bulk_actin
+```
+
+```{r}
+paste0("single cell hem_counts/actin_counts = ", sc_ratio)
+```
+
+```{r}
+paste0("bulk hem_counts/actin_counts = ", bulk_ratio)
+```
+
+# HUGE MAJORITY OF BLOOD ONLY IN SINGLE CELL DATA !
+
+#### Actin genes
+```{r}
+actin_ids
+```
+
+#### Blood caracterizing genes
+```{r}
+hem_contaning_genes
+```

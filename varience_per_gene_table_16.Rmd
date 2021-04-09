@@ -1,0 +1,62 @@
+---
+title: "Table of variance per gene"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+library(Seurat)
+```
+
+```{r}
+load("data/hvg_counts_for_var_table.RData")
+```
+
+```{r}
+hvg_counts_all <- merge(hvg_counts_saline, hvg_counts_freshwater, by="rowname")
+saline_right_boundary <- length(hvg_counts_saline) - 1
+freshwater_left_boundary <- saline_right_boundary + 1 - 1
+freshwater_right_boundary <- saline_right_boundary + length(hvg_counts_freshwater) - 1 - 1
+
+output <- apply(hvg_counts_all[,2:freshwater_right_boundary], 1, function(row){
+  # message(paste0("row = ", row))
+  x <- row[1:saline_right_boundary]
+  x <- x[x != 0]
+  y <- row[freshwater_left_boundary:(freshwater_right_boundary - 1)]
+  y <- y[y != 0]
+  if(length(x) > 10 & length(y) > 10){
+    saline_var <- var(x)
+    freshwater_var <- var(y)
+    f.test.res <- var.test(x, y)
+    return(data.frame(f_ratio = f.test.res$estimate, p_val = f.test.res$p.value, saline_var = saline_var, freshwater_var = freshwater_var))
+  }else{
+    return(data.frame(f_ratio = NA, p_val = NA, saline_var = NA, freshwater_var = NA))
+  }
+  
+  # return(data.frame(test = sum(row[1:saline_right_boundary]), test.l.1 = length(row[1:saline_right_boundary]), test.l.2 = length(row[freshwater_left_boundary:freshwater_right_boundary])))
+})
+varience_comparison_table <- do.call(rbind,output)
+rownames(varience_comparison_table) <- hvg_counts_all$rowname
+```
+
+
+
+
+```{r}
+# varience_comparison_table_filtered <- filter(varience_comparison_table, !(is.na(saline_var) | is.na(freshwater_var)) & !(saline_var == 0 | freshwater_var == 0))
+varience_comparison_table_filtered <- filter(varience_comparison_table,  p_val < 0.05 & f_ratio > 0 & f_ratio != Inf & p_val != 0)
+
+write.csv(varience_comparison_table_filtered, file = "data/varience_comparison_table_blood_cluster.csv")
+```
+
+```{r}
+# varience_comparison_table_filtered <- filter(varience_comparison_table, !(is.na(saline_var) | is.na(freshwater_var)) & !(saline_var == 0 | freshwater_var == 0))
+varience_comparison_table_unfiltered <- filter(varience_comparison_table,  f_ratio > 0 & f_ratio != Inf & p_val != 0)
+
+write.csv(varience_comparison_table_unfiltered, file = "data/varience_comparison_table_blood_cluster_UNFILTERED.csv")
+```

@@ -1,0 +1,211 @@
+---
+title: "scATAC data analysis atac4 QC and clustering with Signac"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(patchwork)
+set.seed(42)
+```
+
+
+```{r}
+counts <- Read10X_h5("data/scATAC/atac4/filtered_peak_bc_matrix.h5")
+```
+
+```{r}
+metadata <- read.csv(
+  file = "data/scATAC/atac4/singlecell.csv",
+  header = TRUE,
+  row.names = 1
+)
+
+atac4_assay <- CreateChromatinAssay(
+  counts = counts,
+  sep = c(":", "-"),
+  genome = "gasAcu1",
+  fragments = 'data/scATAC/atac4/fragments.tsv.gz',
+  min.cells = 1
+)
+```
+
+
+
+```{r}
+## Computing hash
+
+atac4 <- CreateSeuratObject(
+  counts = atac4_assay,
+  assay = 'peaks',
+  project = 'fish_scatac4',
+  meta.data = metadata
+)
+```
+
+# Banding patterns depending on mononucleosomal/nucleosome-free ratio (NS) 
+# Fragment histogram for chr1
+
+
+```{r fig.width=9}
+atac4 <- NucleosomeSignal(object = atac4)
+atac4$nucleosome_group <- ifelse(atac4$nucleosome_signal > 0.30, 'NS > 0.30', 'NS < 0.30')
+FragmentHistogram(object = atac4, group.by = 'nucleosome_group', region = 'groupI-1-10000000')
+```
+Outlires with high NS should have different banding pattern, but here they exibit pretty similar pattern (do not know why). 
+
+
+
+```{r}
+load(file = "data/scATAC/ga_granges_annotation.RData")
+```
+
+
+```{r}
+annotations <- ga_tx_merged
+# change to UCSC style 
+# seqlevelsStyle(annotations) <- 'UCSC'
+genome(annotations) <- "gasAcu1"
+
+# add the gene information to the object
+Annotation(atac4) <- annotations
+```
+
+
+```{r}
+atac4 <- TSSEnrichment(atac4, fast = FALSE)
+```
+
+```{r}
+atac4$high.tss <- ifelse(atac4$TSS.enrichment > 1.8, 'High', 'Low')
+TSSPlot(atac4, group.by = 'high.tss') + NoLegend()
+```
+Outliers with Low TSS enrichment should exibit almoust no TSS pattern, but these do (and I am not sure why).
+
+
+
+## Clustering with light filtering of cells (peak_region_fragments > 300)
+
+```{r}
+atac4_light_filtering <- subset(
+  x = atac4,
+  subset = peak_region_fragments > 300 &
+    peak_region_fragments < 2000 &
+    pct_reads_in_peaks > 25 &
+    # blacklist_ratio < 0.025 &
+    nucleosome_signal < 0.25 &
+    TSS.enrichment > 0.5
+)
+atac4_light_filtering
+```
+
+```{r fig.width=14}
+atac4_light_filtering$pct_reads_in_peaks <- atac4_light_filtering$peak_region_fragments / atac4_light_filtering$passed_filters * 100
+# atac4$blacklist_ratio <- atac4$blacklist_region_fragments / atac4$peak_region_fragments
+
+VlnPlot(
+  object = atac4_light_filtering,
+  features = c('pct_reads_in_peaks', 'peak_region_fragments',
+               'TSS.enrichment', 'nucleosome_signal'),
+  pt.size = 0.1,
+  ncol = 4,
+  group.by = "orig.ident"
+)
+```
+
+
+### Normalization and linear dimensional reduction
+
+```{r}
+atac4_light_filtering <- RunTFIDF(atac4_light_filtering)
+atac4_light_filtering <- FindTopFeatures(atac4_light_filtering, min.cutoff = 'q0')
+atac4_light_filtering <- RunSVD(object = atac4_light_filtering)
+DepthCor(atac4_light_filtering)
+```
+The first LSI component often captures sequencing depth (technical variation) rather than biological variation. If this is the case, the component should be removed from downstream analysis.  
+
+
+```{r}
+atac4_light_filtering <- RunUMAP(
+  object = atac4_light_filtering,
+  reduction = 'lsi',
+  dims = 2:30
+)
+atac4_light_filtering <- FindNeighbors(
+  object = atac4_light_filtering,
+  reduction = 'lsi',
+  dims = 2:30
+)
+atac4_light_filtering <- FindClusters(
+  object = atac4_light_filtering,
+  algorithm = 3,
+  resolution = 0.6,
+  verbose = FALSE
+)
+
+DimPlot(object = atac4_light_filtering, label = TRUE) + NoLegend()
+```
+
+## Clustering with heavy filtering of cells (peak_region_fragments > 450)
+
+```{r}
+atac4_heavy_filtering <- subset(
+  x = atac4,
+  subset = peak_region_fragments > 400 &
+    peak_region_fragments < 2000 &
+    pct_reads_in_peaks > 25 &
+    # blacklist_ratio < 0.025 &
+    nucleosome_signal < 0.25 &
+    TSS.enrichment > 0.5
+)
+atac4_heavy_filtering
+```
+
+```{r fig.width=14}
+atac4_heavy_filtering$pct_reads_in_peaks <- atac4_heavy_filtering$peak_region_fragments / atac4_heavy_filtering$passed_filters * 100
+# atac4$blacklist_ratio <- atac4$blacklist_region_fragments / atac4$peak_region_fragments
+
+VlnPlot(
+  object = atac4_heavy_filtering,
+  features = c('pct_reads_in_peaks', 'peak_region_fragments',
+               'TSS.enrichment', 'nucleosome_signal'),
+  pt.size = 0.1,
+  ncol = 4,
+  group.by = "orig.ident"
+)
+```
+
+```{r}
+atac4_heavy_filtering <- RunUMAP(
+  object = atac4_heavy_filtering,
+  reduction = 'lsi',
+  dims = 2:30
+)
+atac4_heavy_filtering <- FindNeighbors(
+  object = atac4_heavy_filtering,
+  reduction = 'lsi',
+  dims = 2:30
+)
+atac4_heavy_filtering <- FindClusters(
+  object = atac4_heavy_filtering,
+  algorithm = 3,
+  resolution = 0.6,
+  verbose = FALSE
+)
+
+DimPlot(object = atac4_heavy_filtering, label = TRUE) + NoLegend()
+```
+Additional filtering did not show major improvement in cluster separation, thats why chose to set peak_region_fragments > 400 and leave more cells in. 
+
+```{r}
+save(atac4_heavy_filtering, file = "data/scATAC/atac4_heavy_filtering_obj_qc_clusters.RData")
+```
+

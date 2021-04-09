@@ -1,0 +1,236 @@
+---
+title: "scATAC combined samples analysis, varience per peak (gene)"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(patchwork)
+set.seed(42)
+```
+
+```{r}
+## Sample combining was done in a separate .R script for multithreading utilisation
+load(file = "data/scATAC/combined_scATAC_samples_obj.RData")
+```
+
+```{r fig.width=9}
+DimPlot(combined, group.by = 'sample', pt.size = 0.1)
+```
+
+```{r}
+pdf(file = "plots/scATAC/scATAC_filtered_merged_not_batch_corrected.pdf")
+print(DimPlot(combined, group.by = 'sample', pt.size = 0.1))
+dev.off
+```
+
+
+```{r calculate_f_test_for_varience_per_peak_F_vs_S}
+comb_counts_matrix <- combined@assays[["ATAC"]]@counts
+
+
+num_saline_cells <- sum(table(combined@meta.data[["sample"]])[c("atac1", "atac2")])
+# num_freshwater_cells <- sum(table(combined@meta.data[["sample"]])[c("atac3", "atac4")])
+
+# Sanity check that ordering in the matrix is OK
+l <- num_saline_cells + 1
+r <- num_saline_cells + 6
+if (!all(names(Idents(combined)[l:r]) == names(head(combined@assays[["ATAC"]]@fragments[[3]]@cells)))){
+  stop("sample ordering in the count matrix is wrong")
+}
+
+l_saline = 1
+r_saline = num_saline_cells 
+l_freshwater = num_saline_cells + 1
+r_freshwater = ncol(comb_counts_matrix)
+
+
+output <- apply(comb_counts_matrix, 1, function(row){
+  # message(paste0("row = ", row))
+  x <- row[1:r_saline]
+  x <- x[x != 0 & !is.na(x)]
+  y <- row[l_freshwater:r_freshwater]
+  y <- y[y != 0 & !is.na(y)]
+  if(length(x) > 20 & length(y) > 20){
+    saline_var <- var(x)
+    freshwater_var <- var(y)
+    f.test.res <- var.test(x, y)
+    return(data.frame(f_ratio = f.test.res$estimate, p_val = f.test.res$p.value, saline_var = saline_var, freshwater_var = freshwater_var))
+  }else{
+    return(data.frame(f_ratio = NA, p_val = NA, saline_var = NA, freshwater_var = NA))
+  }
+  
+  # return(data.frame(test = sum(row[1:saline_right_boundary]), test.l.1 = length(row[1:saline_right_boundary]), test.l.2 = length(row[freshwater_left_boundary:freshwater_right_boundary])))
+})
+saline_vs_freshwater_varience_table <- do.call(rbind,output)
+saline_vs_freshwater_varience_table_filtered <- filter(saline_vs_freshwater_varience_table,  p_val < 0.05 & f_ratio > 0 & f_ratio != Inf & p_val != 0)
+```
+
+
+```{r}
+# median(saline_vs_freshwater_varience_table_filtered$f_ratio)
+```
+
+```{r}
+write.csv(saline_vs_freshwater_varience_table_filtered, file = "data/scATAC/saline_vs_freshwater_varience_table_filtered.csv")
+```
+
+
+```{r}
+load(file = "data/scATAC/ga_granges_annotation.RData")
+annotations <- ga_tx_merged
+# change to UCSC style 
+# seqlevelsStyle(annotations) <- 'UCSC'
+genome(annotations) <- "gasAcu1"
+
+# add the gene information to the object
+Annotation(combined) <- annotations
+```
+
+
+```{r}
+s_vs_f_varience_table_filtered_annotated <- ClosestFeature(
+  object = combined,
+  regions = StringToGRanges(rownames(saline_vs_freshwater_varience_table), sep = c("-", "-"))
+)
+```
+
+```{r calculate_f_test_for_varience_per_peak_F_vs_S_normalized_data}
+comb_data_matrix <- combined@assays[["ATAC"]]@data
+
+
+num_saline_cells <- sum(table(combined@meta.data[["sample"]])[c("atac1", "atac2")])
+# num_freshwater_cells <- sum(table(combined@meta.data[["sample"]])[c("atac3", "atac4")])
+
+# Sanity check that ordering in the matrix is OK
+l <- num_saline_cells + 1
+r <- num_saline_cells + 6
+if (!all(names(Idents(combined)[l:r]) == names(head(combined@assays[["ATAC"]]@fragments[[3]]@cells)))){
+  stop("sample ordering in the count matrix is wrong")
+}
+
+l_saline = 1
+r_saline = num_saline_cells 
+l_freshwater = num_saline_cells + 1
+r_freshwater = ncol(comb_data_matrix)
+
+
+output_norm_data <- apply(comb_data_matrix, 1, function(row){
+  # message(paste0("row = ", row))
+  x <- row[1:r_saline]
+  x <- x[x != 0 & !is.na(x)]
+  y <- row[l_freshwater:r_freshwater]
+  y <- y[y != 0 & !is.na(y)]
+  if(length(x) > 20 & length(y) > 20){
+    saline_var <- var(x)
+    freshwater_var <- var(y)
+    f.test.res <- var.test(x, y)
+    return(data.frame(f_ratio = f.test.res$estimate, p_val = f.test.res$p.value, saline_var = saline_var, freshwater_var = freshwater_var))
+  }else{
+    return(data.frame(f_ratio = NA, p_val = NA, saline_var = NA, freshwater_var = NA))
+  }
+  
+  # return(data.frame(test = sum(row[1:saline_right_boundary]), test.l.1 = length(row[1:saline_right_boundary]), test.l.2 = length(row[freshwater_left_boundary:freshwater_right_boundary])))
+})
+saline_vs_freshwater_varience_table_norm_counts <- do.call(rbind,output_norm_data)
+saline_vs_freshwater_varience_table_norm_counts_filtered <- filter(saline_vs_freshwater_varience_table_norm_counts,  p_val < 0.05 & f_ratio > 0 & f_ratio != Inf & p_val != 0)
+```
+
+
+
+```{r}
+# mean(saline_vs_freshwater_varience_table_norm_counts_filtered$f_ratio)
+```
+
+```{r}
+write.csv(saline_vs_freshwater_varience_table_norm_counts_filtered, file = "data/scATAC/saline_vs_freshwater_varience_table_norm_counts_filtered.csv")
+```
+
+
+```{r}
+s_vs_f_varience_table_norm_filtered_annotated <- ClosestFeature(
+  object = combined,
+  regions = StringToGRanges(rownames(saline_vs_freshwater_varience_table_norm_counts_filtered), sep = c("-", "-"))
+)
+```
+
+```{r}
+saline_vs_freshwater_varience_table_norm_counts_filtered$var_region <- rownames(saline_vs_freshwater_varience_table_norm_counts_filtered)
+s_vs_f_varience_table_norm_filtered_annotated %>% 
+  dplyr::rename(var_region = query_region) %>% 
+  inner_join(as_tibble(saline_vs_freshwater_varience_table_norm_counts_filtered)) -> var_table_annot
+```
+
+```{r}
+# load genese differentially variable by scRNA
+scRNA_var_table <- read_csv(file = "data/varience_comparison_table_blood_cluster.csv")
+scRNA_var_table %>% 
+  dplyr::rename(ensembl_id = X1) -> scRNA_var_table
+```
+
+```{r filter_peaks_by_scRNA_hits}
+subset(var_table_annot, var_table_annot$gene_id %in% scRNA_var_table$ensembl_id) -> var_table_intersected 
+```
+
+```{r}
+write.csv(var_table_annot, file = "data/scATAC/scATAC_saline_vs_freshwater_var_table_annot.csv")
+write.csv(var_table_intersected, file = "data/scATAC/scATAC_saline_vs_freshwater_var_table_annot_intersected_scRNA.csv")
+
+```
+
+
+```{r}
+# median(var_table_intersected$f_ratio)
+```
+
+
+```{r}
+# Test average on intersected table based on counts
+saline_vs_freshwater_varience_table_filtered_annotated <- ClosestFeature(
+  object = combined,
+  regions = StringToGRanges(rownames(saline_vs_freshwater_varience_table_filtered), sep = c("-", "-"))
+)
+
+saline_vs_freshwater_varience_table_filtered$var_region <- rownames(saline_vs_freshwater_varience_table_filtered)
+saline_vs_freshwater_varience_table_filtered_annotated %>% 
+  dplyr::rename(var_region = query_region) %>% 
+  inner_join(as_tibble(saline_vs_freshwater_varience_table_filtered)) -> var_table_counts_annot
+
+
+subset(var_table_counts_annot, var_table_counts_annot$gene_id %in% scRNA_var_table$ensembl_id) -> var_table_counts_intersected 
+
+# median(var_table_counts_intersected$f_ratio)
+```
+  
+## Filter for the peaks that are intersecting +-1000 from TSS
+
+```{r get_tss_regions}
+# get TSS regions
+tss_points <- GetTSSPositions(Annotation(combined[["ATAC"]]))
+ 
+tss_before <- flank(tss_points, 1000)
+tss_after <- flank(tss_points, 1000, start = FALSE)
+tss_regions <- punion(tss_before, tss_after, fill.gap = TRUE)
+tss_regions@elementMetadata <- tss_points@elementMetadata
+```
+
+```{r filter_for_around_TSS}
+overlaps <- findOverlaps(StringToGRanges(var_table_annot$var_region, sep = c("-", "-")), tss_regions)
+var_peaks_around_tss <- var_table_annot[overlaps@to,]
+write_delim(var_peaks_around_tss, file = "data/scATAC/saline_vs_freshwater_varience_peaks_around_TSS.tsv")
+```
+
+```{r}
+# mean(var_peaks_around_tss$f_ratio)
+```
+
+
+

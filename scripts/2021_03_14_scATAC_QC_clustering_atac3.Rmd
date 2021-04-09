@@ -1,0 +1,160 @@
+---
+title: "scATAC data analysis atac3 QC and clustering with Signac"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(patchwork)
+set.seed(42)
+```
+
+
+```{r}
+counts_atac3 <- Read10X_h5("data/scATAC/atac3/filtered_peak_bc_matrix.h5")
+```
+
+```{r}
+metadata_atac3 <- read.csv(
+  file = "data/scATAC/atac3/singlecell.csv",
+  header = TRUE,
+  row.names = 1
+)
+
+atac3_assay <- CreateChromatinAssay(
+  counts = counts_atac3,
+  sep = c(":", "-"),
+  genome = "gasAcu1",
+  fragments = 'data/scATAC/atac3/fragments.tsv.gz',
+  min.cells = 1
+)
+```
+
+
+
+```{r}
+## Computing hash
+
+atac3 <- CreateSeuratObject(
+  counts = atac3_assay,
+  assay = 'peaks',
+  project = 'fish_scatac3',
+  meta.data = metadata_atac3
+)
+```
+
+
+# Banding patterns depending on mononucleosomal/nucleosome-free ratio (NS) 
+# Fragment histogram for chr1
+
+
+```{r fig.width=9}
+atac3 <- NucleosomeSignal(object = atac3)
+atac3$nucleosome_group <- ifelse(atac3$nucleosome_signal > 0.5, 'NS > 0.5', 'NS < 0.5')
+FragmentHistogram(object = atac3, group.by = 'nucleosome_group', region = 'groupI-1-10000000')
+```
+Outlires with high NS should have different banding pattern, but here they exibit pretty similar pattern (do not know why). 
+
+
+
+```{r}
+load(file = "data/scATAC/ga_granges_annotation.RData")
+```
+
+
+```{r}
+annotations <- ga_tx_merged
+# change to UCSC style 
+# seqlevelsStyle(annotations) <- 'UCSC'
+genome(annotations) <- "gasAcu1"
+
+# add the gene information to the object
+Annotation(atac3) <- annotations
+```
+
+
+```{r}
+atac3 <- TSSEnrichment(atac3, fast = FALSE)
+```
+
+```{r}
+atac3$high.tss <- ifelse(atac3$TSS.enrichment > 1.8, 'High', 'Low')
+TSSPlot(atac3, group.by = 'high.tss') + NoLegend()
+```
+Outliers with Low TSS enrichment should exibit almoust no TSS pattern, but these do (and I am not sure why).
+
+
+
+```{r fig.width=14}
+atac3$pct_reads_in_peaks <- atac3$peak_region_fragments / atac3$passed_filters * 100
+# atac3$blacklist_ratio <- atac3$blacklist_region_fragments / atac3$peak_region_fragments
+
+VlnPlot(
+  object = atac3,
+  features = c('pct_reads_in_peaks', 'peak_region_fragments',
+               'TSS.enrichment', 'nucleosome_signal'),
+  pt.size = 0.1,
+  ncol = 4
+)
+```
+
+```{r}
+atac3 <- subset(
+  x = atac3,
+  subset = peak_region_fragments > 500 &
+    peak_region_fragments < 2000 &
+    pct_reads_in_peaks > 30 &
+    # blacklist_ratio < 0.025 &
+    nucleosome_signal < 0.7 &
+    TSS.enrichment > 1.5
+)
+atac3
+```
+
+
+### Normalization and linear dimensional reduction
+
+```{r}
+atac3 <- RunTFIDF(atac3)
+atac3 <- FindTopFeatures(atac3, min.cutoff = 'q0')
+atac3 <- RunSVD(object = atac3)
+DepthCor(atac3)
+```
+The first LSI component often captures sequencing depth (technical variation) rather than biological variation. If this is the case, the component should be removed from downstream analysis.  
+
+
+```{r}
+atac3 <- RunUMAP(
+  object = atac3,
+  reduction = 'lsi',
+  dims = 2:30
+)
+atac3 <- FindNeighbors(
+  object = atac3,
+  reduction = 'lsi',
+  dims = 2:30
+)
+atac3 <- FindClusters(
+  object = atac3,
+  algorithm = 3,
+  resolution = 0.9,
+  verbose = FALSE
+)
+
+DimPlot(object = atac3, label = TRUE) + NoLegend()
+```
+No clear separation of the clusters, probably due to low cell count and poor sequencing quality (not sure why). Probably best to drop this sample.
+
+
+```{r}
+save(atac3, file = "data/scATAC/atac3_obj_qc_clusters.RData")
+```
+

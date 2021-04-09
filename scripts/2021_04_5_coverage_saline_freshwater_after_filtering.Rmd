@@ -1,0 +1,254 @@
+---
+title: "scATAC calculate average coverage after filtering saline/freshwater"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(patchwork)
+set.seed(42)
+```
+
+
+```{r load_sample_objects}
+# load(file = "data/scATAC/atac1_obj_qc_clusters.RData")
+# load(file = "data/scATAC/atac2_heavy_filtering_obj_qc_clusters.RData")
+# load(file = "data/scATAC/atac3_obj_qc_clusters.RData")
+# load(file = "data/scATAC/atac4_heavy_filtering_obj_qc_clusters.RData")
+```
+
+```{r mean_fragments_in_peaks_coverage_by_watertype}
+# # Total number of fragments in peaks: A measure of cellular sequencing depth / complexity. Cells with very few reads may need to be excluded due to low sequencing depth. Cells with extremely high levels may represent doublets, nuclei clumps, or other artefacts.
+# saline_fragments_in_peaks <- c(atac1@meta.data[["peak_region_fragments"]], atac2_heavy_filtering@meta.data[["peak_region_fragments"]])
+# freshwater_fragments_in_peaks <- c(atac3@meta.data[["peak_region_fragments"]], atac4_heavy_filtering@meta.data[["peak_region_fragments"]])
+# fragments_in_peaks <- tibble(fragments_in_peaks = c(saline_fragments_in_peaks, freshwater_fragments_in_peaks),
+#                                 watertype = c(rep("saline", length(saline_fragments_in_peaks)), rep("freshwater", length(freshwater_fragments_in_peaks))))
+# 
+# mean_saline <- mean(saline_fragments_in_peaks)
+# mean_freshwater <- mean(freshwater_fragments_in_peaks)
+
+```
+
+```{r}
+# ggplot(fragments_in_peaks, aes(y = fragments_in_peaks, x = watertype)) +
+#   geom_violin() 
+#   # geom_boxplot(width=0.1, outlier.size = 0)
+```
+
+## Downsampling saline samples to have equal coverage with freshwater
+
+
+```{r}
+## Sample combining was done in a separate .R script for multithreading utilisation
+load(file = "data/scATAC/combined_scATAC_samples_obj.RData")
+```
+
+```{r}
+saline_length <- table(combined@meta.data[["sample"]])[["atac1"]] + table(combined@meta.data[["sample"]])[["atac2"]]
+combined_saline_counts <- combined@assays[["ATAC"]]@counts[,1:saline_length]
+```
+
+```{r}
+# library(scuttle)
+# fraction = mean_freshwater/mean_saline
+# # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+# # Fragments in peaks ratio gives very different resut that the average counts per cell ratio directly from the counts matrix! 
+# # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+# combined_saline_downsampled <- downsampleMatrix(combined_saline_counts, prop = fraction, bycol=TRUE)
+# save(combined_saline_downsampled, file = "data/scATAC/combined_saline_downsampled_matrix.Rdata")
+```
+
+```{r}
+# load(file = "data/scATAC/combined_saline_downsampled_matrix.Rdata")
+```
+
+```{r calculate_f_test_for_varience_per_peak_F_vs_S}
+# comb_counts_matrix <- cbind(
+#   combined_saline_downsampled,
+#   combined@assays[["ATAC"]]@counts[,-(1:saline_length)]
+# )
+# 
+# save(comb_counts_matrix, file = "data/scATAC/combined_downsampled_counts_matrix.Rdata")
+# 
+# 
+# num_saline_cells <- sum(table(combined@meta.data[["sample"]])[c("atac1", "atac2")])
+# # num_freshwater_cells <- sum(table(combined@meta.data[["sample"]])[c("atac3", "atac4")])
+# 
+# # Sanity check that ordering in the matrix is OK
+# l <- num_saline_cells + 1
+# r <- num_saline_cells + 6
+# if (!all(names(Idents(combined)[l:r]) == names(head(combined@assays[["ATAC"]]@fragments[[3]]@cells)))){
+#   stop("sample ordering in the count matrix is wrong")
+# }
+# 
+# l_saline = 1
+# r_saline = num_saline_cells 
+# l_freshwater = num_saline_cells + 1
+# r_freshwater = ncol(comb_counts_matrix)
+# 
+# 
+# output <- apply(comb_counts_matrix, 1, function(row){
+#   # message(paste0("row = ", row))
+#   x <- row[1:r_saline]
+#   x <- x[x != 0 & !is.na(x)]
+#   y <- row[l_freshwater:r_freshwater]
+#   y <- y[y != 0 & !is.na(y)]
+#   if(length(x) > 20 & length(y) > 20){
+#     saline_var <- var(x)
+#     freshwater_var <- var(y)
+#     f.test.res <- var.test(x, y)
+#     return(data.frame(f_ratio = f.test.res$estimate, p_val = f.test.res$p.value, saline_var = saline_var, freshwater_var = freshwater_var))
+#   }else{
+#     return(data.frame(f_ratio = NA, p_val = NA, saline_var = NA, freshwater_var = NA))
+#   }
+#   
+#   # return(data.frame(test = sum(row[1:saline_right_boundary]), test.l.1 = length(row[1:saline_right_boundary]), test.l.2 = length(row[freshwater_left_boundary:freshwater_right_boundary])))
+# })
+# saline_vs_freshwater_varience_table <- do.call(rbind,output)
+# saline_vs_freshwater_varience_table_filtered_downsampled <- filter(saline_vs_freshwater_varience_table,  p_val < 0.05 & f_ratio > 0 & f_ratio != Inf & p_val != 0)
+```
+
+```{rmean_s_f_after_downsampling}
+# median(saline_vs_freshwater_varience_table_filtered_downsampled$f_ratio)
+```
+
+
+
+```{r test_coverage_diff_in_orig_combined_counts_matrix}
+counts_per_cell <- colSums(combined@assays[["ATAC"]]@counts)
+mean_saline_counts_per_cell <- mean(counts_per_cell[1:saline_length])
+mean_freshwater_counts_per_cell <- mean(counts_per_cell[-(1:saline_length)])
+coverage_imbalance_ratio <- mean_freshwater_counts_per_cell/mean_saline_counts_per_cell
+```
+
+
+
+```{r downsampling_of_saline_by_the_ratio_from_count_matrix}
+#trying more memory efficient method by working directly on the internal vectors of the dgCMatrix
+require(scuttle)
+combined_saline_counts <- combined@assays[["ATAC"]]@counts[,1:saline_length]
+combined_saline_downsampled <- downsampleMatrix(combined_saline_counts, prop = coverage_imbalance_ratio, bycol=TRUE)
+# This one workes super efficiently!
+
+comb_counts_matrix <- cbind(
+  combined_saline_downsampled,
+  combined@assays[["ATAC"]]@counts[,-(1:saline_length)]
+)
+save(comb_counts_matrix, file = "data/scATAC/combined_downsampled_counts_matrix.Rdata")
+```
+
+```{r test_if_downsampling_worked}
+counts_per_cell <- colSums(comb_counts_matrix)
+mean_saline_counts_per_cell_downsampled <- mean(counts_per_cell[1:saline_length])
+mean_freshwater_counts_per_cell <- mean(counts_per_cell[-(1:saline_length)])
+# the downsampling did not work in regard to counts, mean counts per cell are different for saline and freshwater
+```
+
+
+```{r recalculate_f_test_for_varience_per_peak_F_vs_S_counts_rebalanced}
+
+num_saline_cells <- sum(table(combined@meta.data[["sample"]])[c("atac1", "atac2")])
+# num_freshwater_cells <- sum(table(combined@meta.data[["sample"]])[c("atac3", "atac4")])
+
+# Sanity check that ordering in the matrix is OK
+l <- num_saline_cells + 1
+r <- num_saline_cells + 6
+if (!all(names(Idents(combined)[l:r]) == names(head(combined@assays[["ATAC"]]@fragments[[3]]@cells)))){
+  stop("sample ordering in the count matrix is wrong")
+}
+
+l_saline = 1
+r_saline = num_saline_cells 
+l_freshwater = num_saline_cells + 1
+r_freshwater = ncol(comb_counts_matrix)
+
+
+output <- apply(comb_counts_matrixcomb_counts_matrixcomb_counts_matrixcomb_counts_matrixcomb_counts_matrixcomb_counts_matrixcomb_counts_matrixcomb_counts_matrix, 1, function(row){
+  # message(paste0("row = ", row))
+  x <- row[1:r_saline]
+  x <- x[x != 0 & !is.na(x)]
+  y <- row[l_freshwater:r_freshwater]
+  y <- y[y != 0 & !is.na(y)]
+  if(length(x) > 20 & length(y) > 20){
+    saline_var <- var(x)
+    freshwater_var <- var(y)
+    f.test.res <- var.test(x, y)
+    return(data.frame(f_ratio = f.test.res$estimate, p_val = f.test.res$p.value, saline_var = saline_var, freshwater_var = freshwater_var))
+  }else{
+    return(data.frame(f_ratio = NA, p_val = NA, saline_var = NA, freshwater_var = NA))
+  }
+  
+  # return(data.frame(test = sum(row[1:saline_right_boundary]), test.l.1 = length(row[1:saline_right_boundary]), test.l.2 = length(row[freshwater_left_boundary:freshwater_right_boundary])))
+})
+saline_vs_freshwater_varience_table <- do.call(rbind,output)
+saline_vs_freshwater_varience_table_filtered_downsampled <- filter(saline_vs_freshwater_varience_table,  p_val < 0.05 & f_ratio > 0 & f_ratio != Inf & p_val != 0)
+```
+
+```{r}
+s_f_var_table_filtered <- read_csv("data/scATAC/saline_vs_freshwater_varience_table_filtered.csv")
+```
+
+```{r mean_s_f_before_downsampling}
+paste0("BEFORE downsampling, mean varience difference ratio: ", mean(s_f_var_table_filtered$f_ratio))
+```
+
+
+```{r rmean_s_f_after_downsampling}
+paste0("AFTER downsampling, mean varience difference ratio: ", mean(saline_vs_freshwater_varience_table_filtered_downsampled$f_ratio))
+```
+
+## Calculating varience difference ratio based on the number of non-zero peaks per gene
+
+
+```{r}
+# annotate peaks vs cells matrix with genes
+peaks_in_combined_obj_annotated <- ClosestFeature(
+  object = combined,
+  regions = StringToGRanges(rownames(combined), sep = c("-", "-"))
+)
+
+# convert all non-zero values to 1
+comb_counts_matrix_binarised <- comb_counts_matrix # all non-zero peaks set to value 1
+comb_counts_matrix_binarised@x <- rep_len(1, length(comb_counts_matrix_binarised@x))
+
+# sum column-wise by gene (resulting with a matrix of num_nonzero_peaks_in_gene vs cells)
+num_nonzero_peaks_in_genes_matrix <- Matrix::Matrix(rowsum(comb_counts_matrix_binarised, peaks_in_combined_obj_annotated$gene_id), sparse = TRUE)
+```
+
+```{r calculate_varience_diff_for_number_of_nonzero_peaks_in_genes_matrix}
+output <- apply(num_nonzero_peaks_in_genes_matrix, 1, function(row){
+  # message(paste0("row = ", row))
+  x <- row[1:r_saline]
+  x <- x[x != 0 & !is.na(x)]
+  y <- row[l_freshwater:r_freshwater]
+  y <- y[y != 0 & !is.na(y)]
+  if(length(x) > 20 & length(y) > 20){
+    saline_var <- var(x)
+    freshwater_var <- var(y)
+    f.test.res <- var.test(x, y)
+    return(data.frame(f_ratio = f.test.res$estimate, p_val = f.test.res$p.value, saline_var = saline_var, freshwater_var = freshwater_var))
+  }else{
+    return(data.frame(f_ratio = NA, p_val = NA, saline_var = NA, freshwater_var = NA))
+  }
+  
+  # return(data.frame(test = sum(row[1:saline_right_boundary]), test.l.1 = length(row[1:saline_right_boundary]), test.l.2 = length(row[freshwater_left_boundary:freshwater_right_boundary])))
+})
+num_nonzero_peaks_in_genes_varience_table <- do.call(rbind,output)
+num_nonzero_peaks_in_genes_varience_table_filtered_downsampled <- filter(num_nonzero_peaks_in_genes_varience_table,  p_val < 0.05 & f_ratio > 0 & f_ratio != Inf & p_val != 0)
+```
+
+```{r}
+paste0("AFTER downsampling, mean varience difference ratio based on number of nonzero peaks per gene: ", mean(num_nonzero_peaks_in_genes_varience_table_filtered_downsampled$f_ratio)) 
+```
+
+
+
+

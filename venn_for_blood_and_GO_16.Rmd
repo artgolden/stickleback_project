@@ -1,0 +1,303 @@
+---
+title: "Venn diagram for blood cluster and GO enrichment"
+output: html_notebook
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+library(Seurat)
+```
+
+```{r}
+load(file = "data/rna.integrated.filtered.after.clustering.obj.RData")
+rna.integrated.cluster.blood <- subset(rna.integrated, idents = 0)
+rna.integrated.cluster.rest <- subset(rna.integrated, idents = c(1,2))
+```
+
+```{r subsetting_blood_for_each_sample_and_HVGs}
+load(file = "data/rna.integrated.filtered.after.clustering.obj.RData")
+rna.integrated.cluster.blood <- subset(rna.integrated, idents = 0)
+blood_cells_ids <- rna.integrated.cluster.blood@assays[["RNA"]]@counts@Dimnames[[2]]
+# blood_cells_ids <- paste(blood_cells_ids, rep("-1", length(blood_cells_ids)), sep = "") 
+
+
+stickleback.rna.comb <- readRDS(file = "data/stickleback.rna.seurat.samples.PURE_ENSEMBLE.rds")
+rna.list <- SplitObject(stickleback.rna.comb, split.by = "orig.ident")
+vst.list <- data.frame()
+vst_one <- data.frame()
+for (i in 1:length(rna.list)) {
+    # cells_to_keep <- gsub("-1", "", rna.list[[i]]@assays[["RNA"]]@counts@Dimnames[[2]])
+    cells_to_keep <- rna.list[[i]]@assays[["RNA"]]@counts@Dimnames[[2]]
+    cells_to_keep <- subset(cells_to_keep, cells_to_keep %in% blood_cells_ids)
+    rna.list[[i]] <- subset(rna.list[[i]], cells = cells_to_keep)
+    rna.list[[i]] <- NormalizeData(rna.list[[i]], verbose = FALSE)
+    rna.list[[i]] <- FindVariableFeatures(rna.list[[i]], selection.method = "vst", 
+        nfeatures = 2000, verbose = FALSE)
+    tmp.frame <- data.frame(sample_vst = rna.list[[i]]@assays[["RNA"]]@meta.features[["vst.variance.standardized"]],
+                            sample_ids = rna.list[[i]]@assays[["RNA"]]@counts@Dimnames[[1]])
+    tmp.frame <- subset(tmp.frame, sample_ids %in% rna.list[[i]]@assays[["RNA"]]@var.features)
+    tmp.frame <- tmp.frame[order(-tmp.frame$sample_vst),]
+    tmp.frame <- mutate(tmp.frame, ID = row_number())
+    tmp.frame$sample <- paste0("sample_", i)
+    if(length(vst_one) == 0){
+      
+      vst_one <- tmp.frame
+    }
+    else{
+      vst_one <- rbind(vst_one, tmp.frame)
+    }
+    tmp.frame$sample <- NULL
+    
+    colrenames <- c(paste0("sample_", i, "_variance_std"), paste0("sample_", i, "_ids"), "ID")
+    colnames(tmp.frame) <- colrenames
+    if(length(vst.list) == 0){
+      vst.list <- tmp.frame
+    }
+    else{
+      vst.list <- merge(vst.list, tmp.frame, by = "ID")
+    }
+}
+write.table(vst.list, file = "data/top_2000_HVGs_for_each_sample_blood_only.tsv", sep = "\t")
+# head(vst.list, 50)
+```
+
+### Venn diagrams for the overlapping HVGs for all samples (updated: only for blood)
+
+```{r venn_diagrams_for_overlapping_HVGs}
+require(venn)
+    
+# vst.list <- read.table(file = "data/top_2000_HVGs_for_each_sample_blood_only.tsv")
+
+png(filename = "plots/for_article/f_2b_venn_hvgs_per_sample_blood_only.png", res = 300, width = 1500, height =1200)
+venn(list(`1_sal` = vst.list$sample_1_ids,
+          `2_sal` = vst.list$sample_2_ids,
+          `3_fr` = vst.list$sample_3_ids,
+          `4_fr` = vst.list$sample_4_ids),
+     zcolor = c("#4A8E9F", "#4A8E9F", "#A1887F", "#A1887F"), opacity = 0.8, ilcs = 1.2, sncs = 1, box = FALSE, ggplot = FALSE, plotsize = 60)
+dev.off()
+venn(list(`1_sal` = vst.list$sample_1_ids,
+          `2_sal` = vst.list$sample_2_ids,
+          `3_fr` = vst.list$sample_3_ids,
+          `4_fr` = vst.list$sample_4_ids),
+     zcolor = c("#4A8E9F", "#4A8E9F", "#A1887F", "#A1887F"), opacity = 0.8, ilcs = 1.2, sncs = 1, box = FALSE, ggplot = FALSE, plotsize = 60)
+```
+
+### GO enrichment with conversion to Zebrafish orthologs, background = union of all HVGs for all samples (blood cells only)
+
+```{r stickleback_to_zebrafish_IDs_function}
+conversion_table <- read.table(file = "data/stickleback_zebrafish_orthologs.tsv", sep = "\t", header = TRUE)
+stickleback_to_zebrafish_IDs <- function(stickleback_ensembl_ids, conversion_table, id_type="zebrafish_ensembl"){
+  conversion_table <- merge(data.frame(stickleback_ensembl = stickleback_ensembl_ids), conversion_table, by="stickleback_ensembl", sort=FALSE)
+  zebrafish_ids <- conversion_table[,id_type]
+  return(zebrafish_ids)
+}
+```
+
+```{r GO_enrichment_watertype_specific_HVGs}
+
+P_ADJUST_VALUE_CUTOFF = 0.1
+# GO enrichment for HVGs common for freshwater and saline
+saline_specific_HVGs <- stickleback_to_zebrafish_IDs(setdiff(intersect(vst.list$sample_1_ids,
+                                                                       vst.list$sample_2_ids),
+                                                             union(vst.list$sample_3_ids,
+                                                                   vst.list$sample_4_ids)), conversion_table)
+freshwater_specific_HVGs <- stickleback_to_zebrafish_IDs(setdiff(intersect(vst.list$sample_3_ids,
+                                                                           vst.list$sample_4_ids),
+                                                                 union(vst.list$sample_1_ids,
+                                                                       vst.list$sample_2_ids)), conversion_table)
+hvg_union_background <- stickleback_to_zebrafish_IDs(c(vst.list$sample_1_ids,
+                                                       vst.list$sample_2_ids,
+                                                       vst.list$sample_3_ids,
+                                                       vst.list$sample_4_ids), conversion_table)
+write.table(hvg_union_background, file = "data/hvg_union_background.tsv", sep = "\t")
+
+# BiocManager::install("org.Dr.eg.db")
+require(clusterProfiler)
+saline_GO <- enrichGO(gene = saline_specific_HVGs,
+                OrgDb         = "org.Dr.eg.db",
+                keyType       = 'ENSEMBL',
+                pAdjustMethod = "BH",
+                pvalueCutoff = P_ADJUST_VALUE_CUTOFF,
+                qvalueCutoff=1,
+                universe = hvg_union_background)
+freshwater_GO <- enrichGO(gene = freshwater_specific_HVGs,
+                OrgDb         = "org.Dr.eg.db",
+                keyType       = 'ENSEMBL',
+                pAdjustMethod = "BH",
+                pvalueCutoff = P_ADJUST_VALUE_CUTOFF,
+                qvalueCutoff=1,
+                universe = hvg_union_background)
+```
+
+Adjusted p-value threshold = `r P_ADJUST_VALUE_CUTOFF`
+   
+```{r GO_enrichment_plots}
+# Top of GO enrichment terms for oppositely changing genes between samples
+require(enrichplot)
+
+svg(filename = "plots/for_article/f_3a_GO_enrichment_waterspecific_HVGs_saline.svg")
+dotplot(saline_GO, showCategory = 30,
+        title = "GO terms, saline_GO")
+dev.off()
+svg(filename = "plots/for_article/f_3b_GO_enrichment_waterspecific_HVGs_freshwater.svg")
+dotplot(freshwater_GO, showCategory = 30,
+        title = "GO terms, freshwater_GO")
+dev.off()
+
+dotplot(saline_GO, showCategory = 30,
+        title = "GO terms, saline_GO")
+dotplot(freshwater_GO, showCategory = 30,
+        title = "GO terms, freshwater_GO")
+```
+
+```{r to_entrez_for_kegg}
+library(biomaRt)
+ensembl <- useEnsembl(biomart = "ensembl")
+ensembl <- useDataset(dataset = "drerio_gene_ensembl", mart = ensembl)
+
+freshwater_specific_HVGs_entrez <- getBM(attributes=c("entrezgene_id"),
+      filters=c('ensembl_gene_id'),
+      values=freshwater_specific_HVGs,
+      mart=ensembl)[["entrezgene_id"]]
+
+saline_specific_HVGs_entrez <- getBM(attributes=c("entrezgene_id"),
+      filters=c('ensembl_gene_id'),
+      values=saline_specific_HVGs,
+      mart=ensembl)[["entrezgene_id"]]
+
+hvg_union_background_entrez <- getBM(attributes=c("entrezgene_id"),
+      filters=c('ensembl_gene_id'),
+      values=hvg_union_background,
+      mart=ensembl)[["entrezgene_id"]]
+
+```
+
+### KEGG pathways for watertype specific HVGs for blood only 
+
+```{r kegg_watertype_specific_HVGs}
+P_ADJUST_VALUE_CUTOFF_KEGG = 0.1
+
+saline_kegg <- enrichKEGG(saline_specific_HVGs_entrez,
+                          organism="dre",
+                          universe=hvg_union_background_entrez,
+                          pvalueCutoff=0.1,
+                          pAdjustMethod="BH")
+freshwater_kegg <- enrichKEGG(freshwater_specific_HVGs_entrez,
+                          organism="dre",
+                          universe=hvg_union_background_entrez,
+                          pvalueCutoff=0.1,
+                          pAdjustMethod="BH")
+```
+
+Adjusted p-value threshold = `r P_ADJUST_VALUE_CUTOFF_KEGG`
+
+```{r kegg_plots_watertype_hvgs}
+svg(filename = "plots/for_article/f_3c_KEGG_enrichment_waterspecific_HVGs_freshwater.svg")
+dotplot(saline_kegg,showCategory = 30,title = "KEGG terms, saline")
+dev.off()
+svg(filename = "plots/for_article/f_3d_GO_enrichment_waterspecific_HVGs_freshwater.svg")
+dotplot(freshwater_kegg,showCategory = 30,title = "KEGG terms, freshwater")
+dev.off()
+dotplot(saline_kegg,showCategory = 30,title = "KEGG terms, saline")
+dotplot(freshwater_kegg,showCategory = 30,title = "KEGG terms, freshwater")
+```
+
+### GO enrichment for HVGs form top of F-test list, blood only
+
+```{r}
+NUMBER_OF_GENES_FROM_TOP_AND_BOTTOM = 100
+
+
+f.test.filtered.blood <- read.table(file = "data/f.test.filtered.blood.tsv", sep = '\t', header = TRUE)
+# tmp_ids <- stickleback_to_zebrafish_IDs(rownames(f.test.filtered.blood), conversion_table = conversion_table)
+# f.test.filtered.blood <-tibble::rownames_to_column(f.test.filtered.blood)
+f.test.filtered.blood <- merge(f.test.filtered.blood, conversion_table, by.x = "ensembl_gene_id", by.y = "stickleback_ensembl")
+
+f.test.top <- head(arrange(f.test.filtered.blood,desc(f_ratio)), n = NUMBER_OF_GENES_FROM_TOP_AND_BOTTOM)
+f.test.bottom <- tail(arrange(f.test.filtered.blood,desc(f_ratio)), n = NUMBER_OF_GENES_FROM_TOP_AND_BOTTOM)
+```
+
+
+```{r GO_low_high_dispergent_genes}
+f.test.top.GO <- enrichGO(gene = f.test.top$zebrafish_ensembl,
+                OrgDb         = "org.Dr.eg.db",
+                keyType       = 'ENSEMBL',
+                pAdjustMethod = "BH",
+                pvalueCutoff = 0.7,
+                qvalueCutoff=1,
+                universe = f.test.filtered.blood$zebrafish_ensembl)
+f.test.bottom.GO <- enrichGO(gene = f.test.bottom$zebrafish_ensembl,
+                OrgDb         = "org.Dr.eg.db",
+                keyType       = 'ENSEMBL',
+                pAdjustMethod = "BH",
+                pvalueCutoff = 0.7,
+                qvalueCutoff=1,
+                universe = f.test.filtered.blood$zebrafish_ensembl)
+```
+
+### GO for top and bottom `r NUMBER_OF_GENES_FROM_TOP_AND_BOTTOM` genes of the F-test dispersion table
+
+```{r GO_enrichment_plots_f_test, fig.width=12}
+# Top of GO enrichment terms for oppositely changing genes between samples
+dotplot(f.test.top.GO, showCategory = 30,
+        title = "top 30 GO terms, f.test.top.GO")
+dotplot(f.test.bottom.GO, showCategory = 30,
+        title = "top 30 GO terms, f.test.bottom.GO")
+```
+
+No results with any significance. Up to adjusted p-value threshold = 0.7
+
+### KEGG pathways for top and bottom HVGs form F-test list for blood only 
+
+```{r f_test_list_to_entrez}
+f_table_entrezgene_id <- getBM(attributes=c("entrezgene_id", "ensembl_gene_id"),
+      filters=c('ensembl_gene_id'),
+      values=f.test.filtered.blood$zebrafish_ensembl,
+      mart=ensembl)
+
+f.test.filtered.blood.entrez <- merge(f.test.filtered.blood, f_table_entrezgene_id, by.x = "zebrafish_ensembl", by.y = "ensembl_gene_id")
+
+f.test.top.entrez <- head(arrange(f.test.filtered.blood.entrez,desc(f_ratio)), n = NUMBER_OF_GENES_FROM_TOP_AND_BOTTOM)
+f.test.bottom.entrez <- tail(arrange(f.test.filtered.blood.entrez,desc(f_ratio)), n = NUMBER_OF_GENES_FROM_TOP_AND_BOTTOM)
+```
+
+```{r kegg_for_top_and_bottom_f_test_list}
+P_ADJUST_VALUE_CUTOFF_KEGG_F = 0.2
+
+top_f_test_kegg <- enrichKEGG(f.test.top.entrez$entrezgene_id,
+                          organism="dre",
+                          universe=f.test.filtered.blood.entrez$entrezgene_id,
+                          pvalueCutof=P_ADJUST_VALUE_CUTOFF_KEGG_F,
+                          pAdjustMethod="BH")
+bottom_f_test_kegg <- enrichKEGG(f.test.bottom.entrez$entrezgene_id,
+                          organism="dre",
+                          universe=f.test.filtered.blood.entrez$entrezgene_id,
+                          pvalueCutof=P_ADJUST_VALUE_CUTOFF_KEGG_F,
+                          pAdjustMethod="BH")
+```
+
+### GO for top and bottom `r NUMBER_OF_GENES_FROM_TOP_AND_BOTTOM` genes of the F-test dispersion table
+
+```{r kegg_enrichment_plots_f_test}
+svg(filename = "plots/for_article/f_3e_KEGG_enrichment_top_HVGs_by_F_test.svg")
+dotplot(top_f_test_kegg, showCategory = 30,
+        title = "top KEGG pathways, top HVGs form F-test list")
+dev.off()
+svg(filename = "plots/for_article/f_3f_KEGG_enrichment_bottom_HVGs_by_F_test.svg")
+dotplot(bottom_f_test_kegg, showCategory = 30,
+        title = "top KEGG pathways, top HVGs form F-test list")
+dev.off()
+
+dotplot(top_f_test_kegg, showCategory = 30,
+        title = "top KEGG pathways, top HVGs form F-test list")
+dotplot(bottom_f_test_kegg, showCategory = 30,
+        title = "top KEGG pathways, top HVGs form F-test list")
+```
+
+Adjusted p-value threshold = `r P_ADJUST_VALUE_CUTOFF_KEGG_F`

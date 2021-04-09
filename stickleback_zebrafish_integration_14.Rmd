@@ -1,0 +1,76 @@
+---
+title: "Stickleback and Zebrafish single cell data integration attempt"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(ggplot2)
+library(dplyr)
+library(Seurat)
+```
+
+```{r loading_objects}
+zebrafish_obj <- readRDS(file = "data/zebrafish_new_obj.rds")
+load(file = "data/rna.integrated.filtered.after.clustering.obj.RData")
+rna.integrated <- UpdateSeuratObject(rna.integrated)
+# stickleback.rna.comb <- readRDS(file = "data/stickleback.rna.seurat.samples.PURE_ENSEMBLE.rds")
+# rna.list <- SplitObject(stickleback.rna.comb, split.by = "orig.ident")
+# for (i in 1:length(rna.list)) {
+#     rna.list[[i]] <- NormalizeData(rna.list[[i]], verbose = FALSE)
+#     rna.list[[i]] <- FindVariableFeatures(rna.list[[i]], selection.method = "vst", 
+#         nfeatures = 2000, verbose = FALSE)
+#     rna.list[[i]] <- subset(rna.list[[i]], subset = nFeature_RNA > 200 & nFeature_RNA < 2500) #Filtration step, essential!!
+# }
+# 
+# obj.list <- list("zebrafish" = zebrafish_obj, "stickleback_1" = rna.list[1], "stickleback_2" = rna.list[2], "stickleback_3" = rna.list[3], "stickleback_4" = rna.list[4])
+```
+
+```{r integrating_datasets}
+# zebrafish_obj <- SCTransform(zebrafish_obj, verbose = FALSE)
+# saveRDS(zebrafish_obj, file = "data/zebrafish_obj_SCTransformed.rds")
+# rna.integrated <- SCTransform(rna.integrated, verbose = FALSE)
+# saveRDS(rna.integrated, file = "data/stickleback_obj_integrated_SCTransformed.rds")
+
+## The part below was run in a parallelized mode
+# zebrafish_obj <- readRDS(file = "data/zebrafish_obj_SCTransformed.rds")
+# stickleback_obj <- readRDS(file = "data/stickleback_obj_integrated_SCTransformed.rds")
+# obj_list <- list("zebrafish" = zebrafish_obj, "stickleback" = stickleback_obj)
+# 
+# 
+# integr_features <- SelectIntegrationFeatures(object.list = obj_list, nfeatures = 3000)
+# obj_list <- PrepSCTIntegration(object.list = obj_list, anchor.features = integr_features)
+# reference_dataset <- which(names(obj_list) == "zebrafish")
+# 
+# integr_anchors <- FindIntegrationAnchors(object.list = obj_list, normalization.method = "SCT", 
+#     anchor.features = integr_features, reference = reference_dataset)
+# fishes.integrated <- IntegrateData(anchorset = integr_anchors, normalization.method = "SCT")
+# 
+# fishes.integrated <- RunPCA(object = fishes.integrated, verbose = FALSE)
+# fishes.integrated <- RunUMAP(object = fishes.integrated, dims = 1:30)
+```
+
+```{r integrated_analysis}
+integrated_obj <- readRDS(file = "data/fishes_integrated.rds")
+integrated_obj <- RunPCA(object = integrated_obj, verbose = FALSE)
+integrated_obj <- RunUMAP(object = integrated_obj, dims = 1:30)
+```
+
+```{r integrated_plots, fig.width=16, fig.height=8}
+plots <- DimPlot(integrated_obj, group.by = c("ClusterNames"))
+# plots & theme(legend.position = "top") & guides(color = guide_legend(nrow = 4, byrow = TRUE,
+#     override.aes = list(size = 2.5)))
+plots
+```
+
+```{r integrated_plots_2, fig.width=14, fig.height=8}
+plots <- DimPlot(integrated_obj, group.by = c("orig.ident"))
+# plots & theme(legend.position = "top") & guides(color = guide_legend(nrow = 4, byrow = TRUE,
+#     override.aes = list(size = 2.5)))
+plots
+```
+

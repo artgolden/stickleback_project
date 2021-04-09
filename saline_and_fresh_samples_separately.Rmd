@@ -1,0 +1,129 @@
+---
+title: "Saline and fresh water samples separately"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(ggplot2)
+library(dplyr)
+library(Seurat)
+```
+
+```{r}
+#=================================== Separate saline & fresh ==========================================
+load(file = "data/rna.integrated.filtered.after.clustering.obj.RData")
+rna.integrated.saline <- subset(rna.integrated, orig.ident %in% c("stickleback.sample.1", "stickleback.sample.2"))
+rna.integrated.fresh <- subset(rna.integrated, orig.ident %in% c("stickleback.sample.3", "stickleback.sample.4"))
+```
+
+## Saline samples
+
+```{r fig.width=6, fig.height=10}
+#=================================== Saline samples plots ==========================================
+require(ggpubr)
+p2 <- DimPlot(rna.integrated.saline, reduction = "umap", group.by = "orig.ident") + theme(legend.position="top") +
+          labs(title = "Two saline samples distribution")
+rna.integrated.saline <- FindNeighbors(rna.integrated.saline, dims = 1:15)
+rna.integrated.saline  <- FindClusters(rna.integrated.saline, resolution = 0.1)
+rna.integrated.saline <- RunUMAP(rna.integrated.saline, dims = 1:15)
+p1 <- DimPlot(rna.integrated.saline, reduction = "umap") + theme(legend.position="top") + labs(title = "Major clusters for saline samples")
+
+p_both <- ggarrange(p1, p2,
+              labels = c("A", "B"),
+              ncol = 1, nrow = 2) 
+p_both
+```
+
+```{r}
+#=================================== Saline, blood separated, plots ==========================================
+rna.integrated.saline.blood <- subset(rna.integrated, idents = 0)
+rna.integrated.saline.rest <- subset(rna.integrated, idents = c(1,2))
+
+#=========================== Rest cluster UMAP plot  =================================
+rna.integrated.saline.rest <- FindNeighbors(rna.integrated.saline.rest, dims = 1:15)
+rna.integrated.saline.rest  <- FindClusters(rna.integrated.saline.rest, resolution = 0.12)
+rna.integrated.saline.rest <- RunUMAP(rna.integrated.saline.rest, dims = 1:15)
+DimPlot(rna.integrated.saline.rest, reduction = "umap") + labs(title = "Cell clusters from saline samples without blood")
+```
+### Saline blood cluster markers
+```{r}
+#=========================== Saline blood cluster markers  =================================
+integrated.saline.blood.markers <- FindMarkers(rna.integrated.saline, ident.1 = 0, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.15)
+write.csv(integrated.saline.blood.markers, file = "data/stickleback.saline.blood.cluster.csv")
+# integrated.saline.blood.markers <- read.csv(file = "data/stickleback.saline.blood.cluster.csv")
+
+#top genes
+# integrated.saline.blood.markers %>% top_n(n = 6, wt = avg_logFC)
+head(integrated.saline.blood.markers[order(integrated.saline.blood.markers$p_val_adj),])
+```
+
+ 
+### Saline rest of the cell clusters markers
+```{r}
+#=========================== Saline rest cluster markers resoluiton 0.12  =================================
+integrated.saline.rest.markers <- FindAllMarkers(rna.integrated.saline.rest, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.15)
+write.csv(integrated.saline.rest.markers, file = "data/stickleback.saline.rest.clusters.csv")
+# integrated.saline.rest.markers <- read.csv(file = "data/stickleback.saline.rest.clusters.csv")
+
+#top for each cluster
+integrated.saline.rest.markers %>% group_by(cluster) %>% select(avg_logFC, p_val_adj, cluster, gene) %>% top_n(n = 6, wt = avg_logFC)
+```
+
+## Fresh samples
+
+```{r fig.width=6, fig.height=10}
+#=================================== fresh samples plots ==========================================
+require(ggpubr)
+p2 <- DimPlot(rna.integrated.fresh, reduction = "umap", group.by = "orig.ident", cols = c("#7CAE00", "#C77CFF")) +
+          theme(legend.position="top") +
+          labs(title = "Two fresh samples distribution")
+rna.integrated.fresh <- FindNeighbors(rna.integrated.fresh, dims = 1:15)
+rna.integrated.fresh  <- FindClusters(rna.integrated.fresh, resolution = 0.1)
+rna.integrated.fresh <- RunUMAP(rna.integrated.fresh, dims = 1:15)
+p1 <- DimPlot(rna.integrated.fresh, reduction = "umap") + theme(legend.position="top") + labs(title = "Major clusters for fresh samples")
+
+p_both <- ggarrange(p1, p2,
+              labels = c("A", "B"),
+              ncol = 1, nrow = 2) 
+p_both
+```
+
+```{r}
+#=================================== Fresh, blood separated, plots ==========================================
+rna.integrated.fresh.blood <- subset(rna.integrated, idents = 0)
+rna.integrated.fresh.rest <- subset(rna.integrated, idents = c(1))
+
+#=========================== Rest cluster UMAP plot  =================================
+rna.integrated.fresh.rest <- FindNeighbors(rna.integrated.fresh.rest, dims = 1:15)
+rna.integrated.fresh.rest  <- FindClusters(rna.integrated.fresh.rest, resolution = 0.08)
+rna.integrated.fresh.rest <- RunUMAP(rna.integrated.fresh.rest, dims = 1:15)
+DimPlot(rna.integrated.fresh.rest, reduction = "umap") + labs(title = "Cell clusters from fresh samples without blood (res=0.08)")
+```
+### Fresh blood cluster markers
+```{r}
+#=========================== fresh blood cluster markers  =================================
+integrated.fresh.blood.markers <- FindMarkers(rna.integrated.fresh, ident.1 = 0, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.15)
+write.csv(integrated.fresh.blood.markers, file = "data/stickleback.fresh.blood.cluster.csv")
+# integrated.fresh.blood.markers <- read.csv(file = "data/stickleback.fresh.blood.cluster.csv")
+
+#top genes
+# integrated.fresh.blood.markers %>% top_n(n = 6, wt = avg_logFC)
+head(integrated.fresh.blood.markers[order(integrated.fresh.blood.markers$p_val_adj),])
+```
+
+ 
+### Fresh rest of the cell clusters markers
+```{r}
+#=========================== fresh rest cluster markers resoluiton 0.12  =================================
+integrated.fresh.rest.markers <- FindAllMarkers(rna.integrated.fresh.rest, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.15)
+write.csv(integrated.fresh.rest.markers, file = "data/stickleback.fresh.rest.clusters.csv")
+# integrated.fresh.rest.markers <- read.csv(file = "data/stickleback.fresh.rest.clusters.csv")
+
+#top for each cluster
+integrated.fresh.rest.markers %>% group_by(cluster) %>% select(avg_logFC, p_val_adj, cluster, gene) %>% top_n(n = 6, wt = avg_logFC)
+```

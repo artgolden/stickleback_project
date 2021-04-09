@@ -1,0 +1,401 @@
+---
+title: "Chi-square test renormalized, distance histograms for all clusters, test for narmality of histograms, HVGs comparison freshwater/saline"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(ggplot2)
+library(dplyr)
+library(Seurat)
+```
+
+```{r separating_blood_cluster}
+load(file = "data/rna.integrated.filtered.after.clustering.obj.RData")
+rna.integrated.cluster.blood <- subset(rna.integrated, idents = 0)
+rna.integrated.cluster.rest <- subset(rna.integrated, idents = c(1,2))
+# save(rna.integrated.cluster.blood, file = "data/rna.integrated.cluster.blood.RData")
+# save(rna.integrated.cluster.rest, file = "data/rna.integrated.cluster.rest.RData")
+```
+
+### PCA plot of the blood cluster by the samples
+
+```{r blood_cluster_PCA_plot}
+rna.integrated.cluster.blood <- FindNeighbors(rna.integrated.cluster.blood, dims = 1:15)
+rna.integrated.cluster.blood  <- FindClusters(rna.integrated.cluster.blood, resolution = 0.3)
+rna.integrated.cluster.blood <- RunPCA(rna.integrated.cluster.blood)
+DimPlot(rna.integrated.cluster.blood, reduction = "pca", group.by = "orig.ident")
+```
+
+```{r calculate_distances_from_pca_blood_cluster}
+set.seed(42)
+pca_raw_blood <- as.data.frame(rna.integrated.cluster.blood@reductions[["pca"]]@cell.embeddings)
+pca_raw_blood$sample <- rna.integrated.cluster.blood@meta.data[["orig.ident"]]
+pca_raw_blood <- pca_raw_blood[sample(nrow(pca_raw_blood)), c(1:10,51)]
+pca_saline <- subset(pca_raw_blood, sample %in% c("stickleback.sample.1", "stickleback.sample.2"))[,1:10]
+pca_freshwater <- subset(pca_raw_blood, sample %in% c("stickleback.sample.3", "stickleback.sample.4"))[,1:10]
+
+pca_saline_1_half <- pca_saline[1:4672,]
+pca_saline_2_half <- pca_saline[4674:nrow(pca_saline),]
+colnames(pca_saline_2_half) <- paste(colnames(pca_saline_2_half), ".2half", sep="")
+# pca_salineVsaline <- cbind(pca_saline_1_half, pca_saline_2_half)
+dist_matrix_salineVsaline <- fields::rdist(pca_saline_1_half, pca_saline_2_half)
+
+dist_matrix_salineVfreshwater <- fields::rdist(pca_saline, pca_freshwater[1:nrow(pca_saline),])
+
+pca_freshwater_1_half <- pca_freshwater[1:4907,]
+pca_freshwater_2_half <- pca_freshwater[4909:nrow(pca_freshwater),]
+colnames(pca_freshwater_2_half) <- paste(colnames(pca_freshwater_2_half), ".2half", sep="")
+# pca_freshwaterVfreshwater <- cbind(pca_freshwater_1_half, pca_freshwater_2_half)
+dist_matrix_freshwaterVfreshwater <- fields::rdist(pca_freshwater_1_half, pca_freshwater_2_half)
+
+
+# dist_salineVsaline <- apply(pca_salineVsaline, Eucle)
+```
+
+### Histograms of pairwise distance saline/freshwater
+
+```{r parwise_histrograms_of_distances_between_diff_water_types}
+frame_for_hist <- data.frame(dist = c(as.vector(dist_matrix_salineVsaline), as.vector(dist_matrix_salineVfreshwater), as.vector(dist_matrix_freshwaterVfreshwater)),
+                             pair = c(rep("salineVsaline", length(dist_matrix_salineVsaline)),
+                                      rep("salineVfreshwater", length(dist_matrix_salineVfreshwater)),
+                                      rep("freshwaterVfreshwater", length(dist_matrix_freshwaterVfreshwater))))
+
+mu <- plyr::ddply(frame_for_hist, "pair", summarise, grp.mean=mean(dist))
+
+small_frame_for_hist <- frame_for_hist[sample(nrow(frame_for_hist), 100000),]
+
+p <- ggplot(small_frame_for_hist, aes(x=dist, fill=pair, color=pair)) +
+  geom_histogram(position="identity", alpha=0.5, binwidth = 0.25) + 
+  geom_vline(data=mu, aes(xintercept=grp.mean, color=pair),
+             linetype="dashed")
+p
+```
+
+### Correlation of the distance histogram distribution with the normal distribution
+
+```{r correlation_dist_hist_for_blood_with_normal_distr}
+library(ggpubr)
+dist_hist_small_sVf <- subset(small_frame_for_hist, pair == "salineVfreshwater") # Using only one as an example
+ggqqplot(dist_hist_small_sVf$dist)
+```
+
+### Normality test
+
+```{r test_dist_hist_for_blood_for_normality}
+shapiro.test(dist_hist_small_sVf$dist[1:4900])
+```
+
+The distribution is NOT normal.
+
+### UMAP plot of clusters excluding blood
+
+```{r non_blood_cells_umap}
+#=========================== Rest cluster UMAP plot  =================================
+rna.integrated.cluster.rest <- FindNeighbors(rna.integrated.cluster.rest, dims = 1:15)
+rna.integrated.cluster.rest  <- FindClusters(rna.integrated.cluster.rest, resolution = 0.15)
+rna.integrated.cluster.rest <- RunUMAP(rna.integrated.cluster.rest, dims = 1:15)
+DimPlot(rna.integrated.cluster.rest, reduction = "umap")
+```
+
+### PCA plot of clusters excluding blood
+
+```{r non_blood_cells_pca}
+rna.integrated.cluster.rest <- RunPCA(rna.integrated.cluster.rest)
+DimPlot(rna.integrated.cluster.rest, reduction = "pca")
+```
+
+```{r calculate_distances_from_pca_rest_clusters}
+set.seed(42)
+pca_raw <- as.data.frame(rna.integrated.cluster.rest@reductions[["pca"]]@cell.embeddings)
+pca_raw$sample <- rna.integrated.cluster.rest@meta.data[["orig.ident"]]
+pca_raw$cluster <- as.numeric(rna.integrated.cluster.rest@meta.data[["seurat_clusters"]])
+```
+
+```{r distHistForCluster_functino_for_plotting}
+distHistForCluster <- function(pca_raw, cluster_number){
+  # set.seed(42)
+  pca_raw_cluster <- subset(pca_raw, cluster == cluster_number)
+  pca_raw_cluster <- pca_raw_cluster[sample(nrow(pca_raw_cluster)), c(1:10,51)]
+  pca_saline <- subset(pca_raw_cluster, sample %in% c("stickleback.sample.1", "stickleback.sample.2"))[,1:10]
+  pca_freshwater <- subset(pca_raw_cluster, sample %in% c("stickleback.sample.3", "stickleback.sample.4"))[,1:10]
+  pca_saline <- pca_saline[1:(nrow(pca_saline) - nrow(pca_saline)%%2),]
+  pca_freshwater <- pca_freshwater[1:(nrow(pca_freshwater) - nrow(pca_freshwater)%%2),]
+  
+  split_saline <- split(pca_saline, sample(rep(1:2, nrow(pca_saline) %/% 2)))
+  pca_saline_1_half <- split_saline[[1]]
+  pca_saline_2_half <- split_saline[[2]]
+  # colnames(pca_saline_2_half) <- paste(colnames(pca_saline_2_half), ".2half", sep="")
+  # pca_salineVsaline <- cbind(pca_saline_1_half, pca_saline_2_half)
+  dist_matrix_salineVsaline <- fields::rdist(pca_saline_1_half, pca_saline_2_half)
+  
+  min_row_number <- min(nrow(pca_saline), nrow(pca_freshwater))
+  dist_matrix_salineVfreshwater <- fields::rdist(pca_saline, pca_freshwater)
+  
+  
+  split_freshwater <- split(pca_freshwater, sample(rep(1:2, nrow(pca_freshwater) %/% 2)))
+  pca_freshwater_1_half <- split_freshwater[[1]]
+  pca_freshwater_2_half <- split_freshwater[[2]]
+  # colnames(pca_freshwater_2_half) <- paste(colnames(pca_freshwater_2_half), ".2half", sep="")
+  # pca_freshwaterVfreshwater <- cbind(pca_freshwater_1_half, pca_freshwater_2_half)
+  dist_matrix_freshwaterVfreshwater <- fields::rdist(pca_freshwater_1_half, pca_freshwater_2_half)
+  
+  frame_for_hist <- data.frame(dist = c(as.vector(dist_matrix_salineVsaline), as.vector(dist_matrix_salineVfreshwater), as.vector(dist_matrix_freshwaterVfreshwater)),
+                             pair = c(rep("salineVsaline", length(dist_matrix_salineVsaline)),
+                                      rep("salineVfreshwater", length(dist_matrix_salineVfreshwater)),
+                                      rep("freshwaterVfreshwater", length(dist_matrix_freshwaterVfreshwater))))
+
+  mu <- plyr::ddply(frame_for_hist, "pair", summarise, grp.mean=mean(dist))
+  
+  dist_hist <- ggplot(frame_for_hist, aes(x=dist, fill=pair, color=pair)) +
+    geom_histogram(position="identity", alpha=0.2, binwidth = 0.5) + 
+    geom_vline(data=mu, aes(xintercept=grp.mean, color=pair),
+               linetype="dashed")
+  return(list("frame_for_hist" = frame_for_hist, "mu" = mu))
+}
+```
+
+### Distance histogram cluster 1
+
+```{r dist_plot_cluster_1}
+plot_data <- distHistForCluster(pca_raw, 1)
+ggplot(plot_data$frame_for_hist, aes(x=dist, fill=pair, color=pair)) +
+    geom_histogram( position="identity", alpha=0.2, binwidth = 0.7) + 
+    geom_vline(data=plot_data$mu, aes(xintercept=grp.mean, color=pair),
+               linetype="dashed")
+ggplot(plot_data$frame_for_hist, aes(x=dist, fill=pair, color=pair)) +
+    geom_histogram(aes(y=..density..), position="identity", alpha=0.2, binwidth = 0.7) + 
+    geom_density(alpha=0.6)+
+    geom_vline(data=plot_data$mu, aes(xintercept=grp.mean, color=pair),
+               linetype="dashed")
+```
+
+Distance histograms for small clusters are extremely unstable and dependent upon random splitting in two halves, when tasting same water phenotype against itself. Turns out it was a bug in the code. Distribution means are stable.
+
+### Distance histogram cluster 2
+
+```{r dist_plot_cluster_2}
+plot_data <- distHistForCluster(pca_raw, 2)
+ggplot(plot_data$frame_for_hist, aes(x=dist, fill=pair, color=pair)) +
+    geom_histogram( position="identity", alpha=0.2, binwidth = 0.7) + 
+    geom_vline(data=plot_data$mu, aes(xintercept=grp.mean, color=pair),
+               linetype="dashed")
+ggplot(plot_data$frame_for_hist, aes(x=dist, fill=pair, color=pair)) +
+    geom_histogram(aes(y=..density..), position="identity", alpha=0.2, binwidth = 0.7) + 
+    geom_density(alpha=0.6)+
+    geom_vline(data=plot_data$mu, aes(xintercept=grp.mean, color=pair),
+               linetype="dashed")
+```
+
+### Distance histogram cluster 3
+
+```{r dist_plot_cluster_3}
+plot_data <- distHistForCluster(pca_raw, 3)
+ggplot(plot_data$frame_for_hist, aes(x=dist, fill=pair, color=pair)) +
+    geom_histogram( position="identity", alpha=0.2, binwidth = 0.7) + 
+    geom_vline(data=plot_data$mu, aes(xintercept=grp.mean, color=pair),
+               linetype="dashed")
+ggplot(plot_data$frame_for_hist, aes(x=dist, fill=pair, color=pair)) +
+    geom_histogram(aes(y=..density..), position="identity", alpha=0.2, binwidth = 0.7) + 
+    geom_density(alpha=0.6)+
+    geom_vline(data=plot_data$mu, aes(xintercept=grp.mean, color=pair),
+               linetype="dashed")
+```
+
+### Distance histogram cluster 4
+
+```{r dist_plot_cluster_4}
+plot_data <- distHistForCluster(pca_raw, 4)
+ggplot(plot_data$frame_for_hist, aes(x=dist, fill=pair, color=pair)) +
+    geom_histogram( position="identity", alpha=0.2, binwidth = 0.7) + 
+    geom_vline(data=plot_data$mu, aes(xintercept=grp.mean, color=pair),
+               linetype="dashed")
+ggplot(plot_data$frame_for_hist, aes(x=dist, fill=pair, color=pair)) +
+    geom_histogram(aes(y=..density..), position="identity", alpha=0.2, binwidth = 0.7) + 
+    geom_density(alpha=0.6)+
+    geom_vline(data=plot_data$mu, aes(xintercept=grp.mean, color=pair),
+               linetype="dashed")
+```
+
+### Distance histogram cluster 5
+
+```{r dist_plot_cluster_5}
+plot_data <- distHistForCluster(pca_raw, 5)
+ggplot(plot_data$frame_for_hist, aes(x=dist, fill=pair, color=pair)) +
+    geom_histogram( position="identity", alpha=0.2, binwidth = 0.7) + 
+    geom_vline(data=plot_data$mu, aes(xintercept=grp.mean, color=pair),
+               linetype="dashed")
+ggplot(plot_data$frame_for_hist, aes(x=dist, fill=pair, color=pair)) +
+    geom_histogram(aes(y=..density..), position="identity", alpha=0.2, binwidth = 0.7) + 
+    geom_density(alpha=0.6)+
+    geom_vline(data=plot_data$mu, aes(xintercept=grp.mean, color=pair),
+               linetype="dashed")
+```
+
+### Distance histogram cluster 6
+
+```{r dist_plot_cluster_6}
+plot_data <- distHistForCluster(pca_raw, 6)
+ggplot(plot_data$frame_for_hist, aes(x=dist, fill=pair, color=pair)) +
+    geom_histogram( position="identity", alpha=0.2, binwidth = 0.7) + 
+    geom_vline(data=plot_data$mu, aes(xintercept=grp.mean, color=pair),
+               linetype="dashed")
+ggplot(plot_data$frame_for_hist, aes(x=dist, fill=pair, color=pair)) +
+    geom_histogram(aes(y=..density..), position="identity", alpha=0.2, binwidth = 0.7) + 
+    geom_density(alpha=0.6)+
+    geom_vline(data=plot_data$mu, aes(xintercept=grp.mean, color=pair),
+               linetype="dashed")
+```
+
+### Testing variability between phenotypes saline/freshwater (not inside each phenotype) with the same distance metric for blood cluster
+
+```{r dist_hist_blood_cluster_btw_phenotype_variability}
+set.seed(42)
+pca_raw_blood <- as.data.frame(rna.integrated.cluster.blood@reductions[["pca"]]@cell.embeddings)
+pca_raw_blood$sample <- rna.integrated.cluster.blood@meta.data[["orig.ident"]]
+pca_raw_blood <- pca_raw_blood[sample(nrow(pca_raw_blood)), c(1:10,51)]
+
+pca_saline_1_half <- subset(pca_raw_blood, sample == "stickleback.sample.1")[,1:10]
+pca_saline_2_half <- subset(pca_raw_blood, sample == "stickleback.sample.2")[,1:10]
+dist_matrix_salineVsaline <- fields::rdist(pca_saline_1_half, pca_saline_2_half)
+
+pca_freshwater_1_half <- subset(pca_raw_blood, sample == "stickleback.sample.3")[,1:10]
+pca_freshwater_2_half <- subset(pca_raw_blood, sample == "stickleback.sample.4")[,1:10]
+
+dist_matrix_freshwaterVfreshwater <- fields::rdist(pca_freshwater_1_half, pca_freshwater_2_half)
+
+frame_for_hist <- data.frame(dist = c(as.vector(dist_matrix_salineVsaline), as.vector(dist_matrix_freshwaterVfreshwater)),
+                             pair = c(rep("salineVsaline", length(dist_matrix_salineVsaline)),
+                                      rep("freshwaterVfreshwater", length(dist_matrix_freshwaterVfreshwater))))
+
+mu_btw <- plyr::ddply(frame_for_hist, "pair", summarise, grp.mean=mean(dist))
+
+small_frame_for_hist <- frame_for_hist[sample(nrow(frame_for_hist), 100000),]
+
+p <- ggplot(small_frame_for_hist, aes(x=dist, fill=pair, color=pair)) +
+  geom_histogram(position="identity", alpha=0.5, binwidth = 0.25) + 
+  geom_vline(data=mu_btw, aes(xintercept=grp.mean, color=pair),
+             linetype="dashed")
+p
+```
+```{r means_table_blood_cluster_btw_phenotype_variability}
+mu_btw
+```
+
+
+### Chi-square test for the distribution of saline/freshwater across samples renormalized without blood cluster
+
+```{r chi_square_test_for_sample_distribution_in_clusters}
+samples_over_clusters <- data.frame(sample = rna.integrated.cluster.rest@meta.data[["orig.ident"]],
+                                    cluster = as.character(rna.integrated.cluster.rest@active.ident))
+water_sample_table <- data.frame(sample = unique(rna.integrated.cluster.rest@meta.data[["orig.ident"]]),
+                                 water = c("saline", "saline", "freshwater", "freshwater"))
+samples_over_clusters <- merge(samples_over_clusters, water_sample_table, by = "sample")
+
+# normalizing for the difference in cell numbers salineVfreshwater for the whole run
+correction_coefficient = nrow(pca_freshwater) / nrow(pca_saline)
+
+table_as_frame <- as.data.frame(table(samples_over_clusters[,c("cluster", "water")]))
+samples_over_clusters_matrix <- as.data.frame(matrix(table_as_frame$Freq, ncol=2, dimnames = list(unique(table_as_frame$cluster), unique(table_as_frame$water))))
+
+correction_coefficient = sum(samples_over_clusters_matrix$freshwater) / sum(samples_over_clusters_matrix$saline)
+samples_over_clusters_matrix$freshwater <- samples_over_clusters_matrix$freshwater / correction_coefficient
+as.matrix(samples_over_clusters_matrix)
+
+chisq.test(samples_over_clusters_matrix, correct = FALSE)
+```
+
+Frequencies of cells have been normalized to adjust for different number of sequenced freshwater and saline cells in the clusters without blood. The table above shows normalized numbers of cells.
+
+
+## Comparing HVG saline vs freshwater for each sample in the dataset
+
+```{r extracting_HVGs_for_water_type_separately}
+hvg_saline_obj <- subset(rna.integrated, features = VariableFeatures(object = rna.integrated), subset = orig.ident %in% c("stickleback.sample.1", "stickleback.sample.2"))
+hvg_freshwater_obj <- subset(rna.integrated, features = VariableFeatures(object = rna.integrated), subset = orig.ident %in% c("stickleback.sample.3", "stickleback.sample.4"))
+
+```
+
+```{r extracting_HVGs_for_each_sample_separately}
+stickleback.rna.comb <- readRDS(file = "data/stickleback.rna.seurat.obj.filtered.rds")
+rna.list <- SplitObject(stickleback.rna.comb, split.by = "orig.ident")
+vst.list <- data.frame()
+vst_one <- data.frame()
+for (i in 1:length(rna.list)) {
+    rna.list[[i]] <- NormalizeData(rna.list[[i]], verbose = FALSE)
+    rna.list[[i]] <- FindVariableFeatures(rna.list[[i]], selection.method = "vst", 
+        nfeatures = 2000, verbose = FALSE)
+    tmp.frame <- data.frame(sample_vst = rna.list[[i]]@assays[["RNA"]]@meta.features[["vst.variance.standardized"]],
+                            sample_ids = rna.list[[i]]@assays[["RNA"]]@counts@Dimnames[[1]])
+    tmp.frame <- subset(tmp.frame, sample_ids %in% rna.list[[i]]@assays[["RNA"]]@var.features)
+    tmp.frame <- tmp.frame[order(-tmp.frame$sample_vst),]
+    tmp.frame <- mutate(tmp.frame, ID = row_number())
+    tmp.frame$sample <- paste0("sample_", i)
+    if(length(vst_one) == 0){
+      
+      vst_one <- tmp.frame
+    }
+    else{
+      vst_one <- rbind(vst_one, tmp.frame)
+    }
+    tmp.frame$sample <- NULL
+    
+    colrenames <- c(paste0("sample_", i, "_variance_std"), paste0("sample_", i, "_ids"), "ID")
+    colnames(tmp.frame) <- colrenames
+    if(length(vst.list) == 0){
+      vst.list <- tmp.frame
+    }
+    else{
+      vst.list <- merge(vst.list, tmp.frame, by = "ID")
+    }
+}
+write.table(vst.list, file = "data/top_2000_HVGs_for_each_sample.tsv", sep = "\t")
+head(vst.list, 50)
+```
+
+### Venn diagrams for the overlapping HVGs for all samples
+
+```{r venn_diagrams_for_overlapping_HVGs}
+require(venn)
+venn(list(`Sample 1 saline` = vst.list$sample_1_ids,
+          `Sample 2 saline` = vst.list$sample_2_ids,
+          `Sample 3 freshwater` = vst.list$sample_3_ids,
+          `Sample 4 freshwater` = vst.list$sample_4_ids),
+     zcolor = "style",ilcs = 1.2, sncs = 1, box = FALSE, ggplot = FALSE)
+```
+
+```{r overlapping_HVGs_table}
+overlapping_hvgs <- intersect(vst.list$sample_4_ids, intersect(vst.list$sample_3_ids, intersect(vst.list$sample_2_ids, vst.list$sample_1_ids)))
+# vst_melted <- reshape::melt(vst.list, id=c("ID", ))
+overlapping_hvg_table <- subset(vst_one, sample_ids %in% overlapping_hvgs)
+overlapping_hvg_table$ID <- NULL
+overlapping_hvg_table <- tidyr::spread(overlapping_hvg_table, sample, sample_vst)
+write.table(overlapping_hvg_table, file = "data/overlapping_HVGs_in_all_samples.tsv", sep = "\t")
+overlapping_hvg_table
+```
+
+
+### Correlation between our Stickleback dataset and Zebrafish embrio one
+
+```{r importing_zebrafish_data}
+zebrafish_obj <- readRDS(file = "data/Farnsworth_2019.rds")
+zebrafish_gills <- subset(zebrafish_obj, idents = 5, subset = )
+```
+
+Choosing clusters 5, 21, 146 marked as Gill clusters a, b, c in the [zebrafish paper](https://www.sciencedirect.com/science/article/abs/pii/S0012160619304919). Aggregating them to represent zebrafish bulk RNA-seq. 
+
+```{r converting_data_to_bulk}
+
+```
+
+
+
+
+
+
+
+

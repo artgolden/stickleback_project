@@ -1,0 +1,264 @@
+---
+title: "scATAC data analysis testing ATAC1 with Signac"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(patchwork)
+set.seed(42)
+```
+
+
+```{r}
+counts_atac1 <- Read10X_h5("data/scATAC/atac1/filtered_peak_bc_matrix.h5")
+```
+
+```{r}
+metadata_atac1 <- read.csv(
+  file = "data/scATAC/atac1/singlecell.csv",
+  header = TRUE,
+  row.names = 1
+)
+
+atac1_assay <- CreateChromatinAssay(
+  counts = counts_atac1,
+  sep = c(":", "-"),
+  genome = "gasAcu1",
+  fragments = 'data/scATAC/atac1/fragments.tsv.gz',
+  min.cells = 1
+)
+```
+
+
+
+```{r}
+## Computing hash
+
+atac1 <- CreateSeuratObject(
+  counts = atac1_assay,
+  assay = 'peaks',
+  project = 'fish_scATAC1',
+  meta.data = metadata_atac1
+)
+```
+
+# Banding patterns depending on mononucleosomal/nucleosome-free ratio (NS) 
+# Fragment histogram for chr1
+
+```{r fig.width=9}
+atac1 <- NucleosomeSignal(object = atac1)
+atac1$nucleosome_group <- ifelse(atac1$nucleosome_signal > 0.5, 'NS > 0.5', 'NS < 0.5')
+FragmentHistogram(object = atac1, group.by = 'nucleosome_group', region = 'groupI-1-10000000')
+```
+Outlires with high NS should have different banding pattern, but here they exibit pretty similar pattern (do not know why). 
+
+
+
+```{r}
+# require(GenomicFeatures)
+# supportedUCSCtables(genome="gasAcu1")
+```
+
+
+```{r}
+# # Generating whole genome GRages object for gasAcu1
+# ga_annot_whole <- rtracklayer::GRangesForUCSCGenome("gasAcu1") #DOES NOT PRODUCE GENE ANNOTATION
+# 
+# gasAcu1_txdb <- makeTxDbFromUCSC(genome="gasAcu1", tablename="ensGene")
+# # A Surrogate of a function GetGRangesFromEnsDb that works with TxDb instead of ensdb, since gasAcu1 does not have ensdb R package
+# library(biovizBase)
+# library(GenomeInfoDb)
+# #Getting GRanges obj for each chromosome separately
+# ga_tx <- sapply(X = seq_along(ga_annot_whole), FUN = function(x){
+#       crunch(
+#         obj = gasAcu1_txdb,
+#         which = ga_annot_whole[x],
+#         columns = c("tx_id", "tx_name","gene_id"))
+#     })
+# #Combining all chromosomes
+# ga_tx_comb <- do.call(what = c, args = ga_tx)
+# ga_tx_comb@ranges@NAMES <- gsub("\\..*","",ga_tx_comb@elementMetadata@listData$gene_id) #monkeypatching the NAMES field in ranges with ENSEMBL IDs without the version
+# ga_tx_comb@elementMetadata@listData$gene_name <- gsub("\\..*","",ga_tx_comb@elementMetadata@listData$gene_id)
+```
+
+```{r}
+# #Trying to annotate with manually created GRanges object from TxDb 
+# annotations <- ga_tx_comb
+# seqlevelsStyle(annotations) <- 'UCSC'
+# genome(annotations) <- "gasAcu1"
+# # add the gene information to the object
+# Annotation(atac1) <- annotations
+# 
+# # ERROR occurs trying to do: atac1 <- TSSEnrichment(atac1, fast = FALSE)
+# # because there is no gene_biotype field, because crunch does not fetch gene_biotype form TxDb object
+# # Issue discussing similar stuff with gene_biotype field requirement: https://github.com/timoast/signac/issues/485https://github.com/timoast/signac/issues/485 
+
+```
+
+
+```{r}
+#GETTING gasAcu1 ensdb object !!
+library(AnnotationHub)
+ah <- AnnotationHub()
+ahDb <- query(ah, pattern = c("Gasterosteus aculeatus", "EnsDb", 103))
+ahDb
+gasAcu1_ensdb <- ahDb[[1]]
+```
+
+```{r}
+# checkign that there are expected chromosomes and genes in gasAcu1_ensdb
+gns <- genes(gasAcu1_ensdb)
+```
+
+```{r}
+#store vector of main chromosomes in "groupX" format
+gasAcu1_standard_chromosomes <- seqlevels(gns)[2:22]
+```
+
+
+```{r}
+# extract gene annotations from EnsDb
+annotations <- GetGRangesFromEnsDb(ensdb = gasAcu1_ensdb, standard.chromosomes = TRUE)
+# BUG: using GetGRangesFromEnsDb directly does not work, it produces only MT chromosome. 
+# setting standard.chromosomes = FALSE did not solve the issue
+# Maybe should post an issue on Signac github
+```
+
+```{r}
+#Deconstructing and using GetGRangesFromEnsDb function piece by piece 
+library(biovizBase)
+library(GenomeInfoDb)
+
+# GetGRangesFromEnsDb <- function(
+  ensdb_ga = gasAcu1_ensdb
+  standard.chromosomes = FALSE
+  biotypes = c("protein_coding", "lincRNA", "rRNA", "processed_transcript")
+  verbose = TRUE
+# ) {
+  # convert seqinfo to granges
+  whole.genome <-  as(object = seqinfo(x = ensdb_ga), Class = "GRanges")
+  # whole.genome <- keepStandardChromosomes(whole.genome, pruning.mode = "coarse") # THis step produces the BUG leaving only MT chromosome
+  # This BUG is due to standardChromosomes from GenomeInfoDb recognising only "MT" as standard 
+  # (from https://web.mit.edu/~r/current/arch/i386_linux26/lib/R/library/GenomeInfoDb/html/seqlevels-wrappers.html)
+  whole.genome <- keepSeqlevels(whole.genome, gasAcu1_standard_chromosomes, pruning.mode="coarse") # Leaving only predefined chormosomes.
+
+  # extract genes from each chromosome
+  if (verbose) {
+    ga_tx <- sapply(X = seq_along(whole.genome), FUN = function(x){
+      crunch(
+        obj = ensdb_ga,
+        which = whole.genome[x],
+        columns = c("tx_id", "gene_name", "gene_id", "gene_biotype"))
+    })
+  } else {
+    ga_tx <- sapply(X = seq_along(whole.genome), FUN = function(x){
+      suppressMessages(expr = crunch(
+        obj = ensdb_ga,
+        which = whole.genome[x],
+        columns = c("tx_id", "gene_name", "gene_id", "gene_biotype")))
+    })
+  }
+
+  # combine
+ga_tx_merged <- do.call(what = c, args = ga_tx)
+ga_tx_merged <- ga_tx_merged[ga_tx_merged$gene_biotype %in% biotypes]
+  
+# save(ga_tx_merged, file = "data/scATAC/ga_granges_annotation.RData")
+```
+
+
+```{r}
+annotations <- ga_tx_merged
+# change to UCSC style 
+# seqlevelsStyle(annotations) <- 'UCSC'
+genome(annotations) <- "gasAcu1"
+
+# add the gene information to the object
+Annotation(atac1) <- annotations
+```
+
+
+```{r}
+atac1 <- TSSEnrichment(atac1, fast = FALSE)
+```
+
+```{r}
+atac1$high.tss <- ifelse(atac1$TSS.enrichment > 1.8, 'High', 'Low')
+TSSPlot(atac1, group.by = 'high.tss') + NoLegend()
+```
+Outliers with Low TSS enrichment should exibit almoust no TSS pattern, but these do (and I am not sure why).
+
+
+
+```{r fig.width=14}
+atac1$pct_reads_in_peaks <- atac1$peak_region_fragments / atac1$passed_filters * 100
+# atac1$blacklist_ratio <- atac1$blacklist_region_fragments / atac1$peak_region_fragments
+
+VlnPlot(
+  object = atac1,
+  features = c('pct_reads_in_peaks', 'peak_region_fragments',
+               'TSS.enrichment', 'nucleosome_signal'),
+  pt.size = 0.1,
+  ncol = 4
+)
+```
+
+```{r}
+atac1 <- subset(
+  x = atac1,
+  subset = peak_region_fragments > 500 &
+    peak_region_fragments < 10000 &
+    pct_reads_in_peaks > 50 &
+    # blacklist_ratio < 0.025 &
+    nucleosome_signal < 0.5 &
+    TSS.enrichment > 1.7
+)
+atac1
+```
+## Normalization and linear dimensional reduction
+
+```{r}
+atac1 <- RunTFIDF(atac1)
+atac1 <- FindTopFeatures(atac1, min.cutoff = 'q0')
+atac1 <- RunSVD(object = atac1)
+DepthCor(atac1)
+```
+The first LSI component often captures sequencing depth (technical variation) rather than biological variation. If this is the case, the component should be removed from downstream analysis.  
+
+
+```{r}
+atac1 <- RunUMAP(
+  object = atac1,
+  reduction = 'lsi',
+  dims = 2:30
+)
+atac1 <- FindNeighbors(
+  object = atac1,
+  reduction = 'lsi',
+  dims = 2:30
+)
+atac1 <- FindClusters(
+  object = atac1,
+  algorithm = 3,
+  resolution = 1.2,
+  verbose = FALSE
+)
+
+DimPlot(object = atac1, label = TRUE) + NoLegend()
+```
+## Exeptionaly good clusters, there clearly can be seen several cell types with very clear separation. By far the best sample out of the 4.
+
+
+```{r}
+save(atac1, file = "data/scATAC/atac1_obj_qc_clusters.RData")
+```
+

@@ -1,0 +1,475 @@
+---
+title: "Zebrafish vs Stickleback pseudobulk comparisons"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(ggplot2)
+library(dplyr)
+library(Seurat)
+```
+
+```{r separating_blood_cluster}
+load(file = "data/rna.integrated.filtered.after.clustering.obj.RData")
+rna.integrated.cluster.blood <- subset(rna.integrated, idents = 0)
+rna.integrated.cluster.rest <- subset(rna.integrated, idents = c(1,2))
+# save(rna.integrated.cluster.blood, file = "data/rna.integrated.cluster.blood.RData")
+# save(rna.integrated.cluster.rest, file = "data/rna.integrated.cluster.rest.RData")
+```
+
+
+```{r importing_zebrafish_data}
+# zebrafish_obj <- readRDS(file = "data/Farnsworth_2019.rds")
+#     # zebrafish_gills <- subset(zebrafish_obj, idents = 5)
+#     # Create dataframe with cluster numbers and cell names
+# meta_table <- as.data.frame(zebrafish_obj@ident)
+# meta_table$cell_names <- rownames(meta_table)
+# meta_table$cluster <- as.character(meta_table$`zebrafish_obj@ident`)
+# meta_table$`zebrafish_obj@ident` <- NULL
+# meta_gills <- subset(meta_table, cluster %in% c(5, 21, 146))
+#     # extract counts table from the seurat obj
+# zebrafish_counts <- zebrafish_obj@raw.data
+#     # subset counts as regular matrix
+# gill_counts <- as.data.frame(zebrafish_counts[, colnames(zebrafish_counts) %in% meta_gills$cell_names])
+```
+
+
+
+### Zebrafish vs non-blood Stickleback clusters (5, 21, 146 marked as Gill clusters a, b, c)
+
+
+```{r converting_data_to_bulk_rest_stickleback}
+# converting zebrafish
+# gill_bulk_zebrafish <- as.data.frame(apply(gill_counts, 1, sum))
+# colnames(gill_bulk_zebrafish) <- c("summed_counts_zebrafish")
+# gill_bulk_zebrafish$gene <- rownames(gill_bulk_zebrafish)
+# write.table(gill_bulk_zebrafish, file = "data/gill_bulk_zebrafish.tsv", sep = "\t")
+gill_bulk_zebrafish <- read.table(file = "data/gill_bulk_zebrafish.tsv")
+
+# converting stickleback ONLY REST
+gill_counts_stickleback_rest <- as.data.frame(rna.integrated.cluster.rest@assays$RNA@counts)
+gill_bulk_stickleback_rest <- as.data.frame(apply(gill_counts_stickleback_rest, 1, sum))
+gill_bulk_stickleback_rest$gene <- rownames(gill_bulk_stickleback_rest)
+
+# subsetting only common ids, probably vastly not optimal since I have not seen ENSEMBL ids in the zebrafish dataset, unlike the stickleback
+# ONLY HGNC WERE LEFT AFTER THE MERGER !!!!
+common_ids <- intersect(rownames(gill_bulk_stickleback_rest), rownames(gill_bulk_zebrafish))
+gill_bulk_stickleback_rest <- subset(gill_bulk_stickleback_rest, gene %in% common_ids)
+gill_bulk_zebrafish <- subset(gill_bulk_zebrafish, gene %in% common_ids)
+
+# combining in a single table for the scatterplot
+gill_bulk_both <- merge(gill_bulk_stickleback_rest, gill_bulk_zebrafish, by = "gene")
+colnames(gill_bulk_both) <- c("gene", "stickleback_counts", "zebrafish_counts")
+```
+
+```{r scatter_plot_comparing_stickleback_and_zebrafish_pseudobulk_REST}
+require(ggpubr)
+
+gill_bulk_both_log <- transform(gill_bulk_both, stickleback_counts = log(stickleback_counts), zebrafish_counts = log(zebrafish_counts))
+
+ggscatter(gill_bulk_both_log,
+      x = "stickleback_counts", y = "zebrafish_counts", size = 1.5) +
+      theme_gray() +
+      stat_cor(method = "pearson", label.x = -5, label.y = 5, size=3, color="#696969")+
+      # coord_cartesian(xlim = c(-5, 5), ylim = c(-5, 5)) +
+      labs(title = "Corelation scatter plot pseudobulk stickleback vs zebrafish")
+```
+
+Non-blood clusters show bigger correlation with gill cells by expression, as expected.
+
+
+### Zebrafish vs blood Stickleback clusters (5, 21, 146 marked as Gill clusters a, b, c)
+
+```{r converting_data_to_bulk_blood_stickleback}
+# converting zebrafish
+gill_bulk_zebrafish <- as.data.frame(apply(gill_counts, 1, sum))
+colnames(gill_bulk_zebrafish) <- c("summed_counts_zebrafish")
+gill_bulk_zebrafish$gene <- rownames(gill_bulk_zebrafish)
+
+# converting stickleback ONLY BLOOD
+gill_counts_stickleback_blood <- as.data.frame(rna.integrated.cluster.blood@assays$RNA@counts)
+gill_bulk_stickleback_blood <- as.data.frame(apply(gill_counts_stickleback_blood, 1, sum))
+gill_bulk_stickleback_blood$gene <- rownames(gill_bulk_stickleback_blood)
+
+# subsetting only common ids, probably vastly not optimal since I have not seen ENSEMBL ids in the zebrafish dataset, unlike the stickleback
+# ONLY HGNC WERE LEFT AFTER THE MERGER !!!!
+common_ids <- intersect(rownames(gill_bulk_stickleback_blood), rownames(gill_bulk_zebrafish))
+gill_bulk_stickleback_blood <- subset(gill_bulk_stickleback_blood, gene %in% common_ids)
+gill_bulk_zebrafish <- subset(gill_bulk_zebrafish, gene %in% common_ids)
+
+# combining in a single table for the scatterplot
+gill_bulk_both <- merge(gill_bulk_stickleback_blood, gill_bulk_zebrafish, by = "gene")
+colnames(gill_bulk_both) <- c("gene", "stickleback_counts", "zebrafish_counts")
+```
+
+```{r scatter_plot_comparing_stickleback_and_zebrafish_pseudobulk_BLOOD}
+require(ggpubr)
+
+gill_bulk_both_log <- transform(gill_bulk_both, stickleback_counts = log(stickleback_counts), zebrafish_counts = log(zebrafish_counts))
+
+ggscatter(gill_bulk_both_log,
+      x = "stickleback_counts", y = "zebrafish_counts", size = 1.5) +
+      theme_gray() +
+      stat_cor(method = "pearson", label.x = -5, label.y = 5, size=3, color="#696969")+
+      # coord_cartesian(xlim = c(-5, 5), ylim = c(-5, 5)) +
+      labs(title = "Corelation scatter plot pseudobulk stickleback vs zebrafish")
+```
+
+
+```{r zebrafish_clusters_separately}
+zebrafish_obj <- readRDS(file = "data/Farnsworth_2019.rds")
+    # zebrafish_gills <- subset(zebrafish_obj, idents = 5)
+    # Create dataframe with cluster numbers and cell names
+meta_table <- as.data.frame(zebrafish_obj@ident)
+meta_table$cell_names <- rownames(meta_table)
+meta_table$cluster <- as.character(meta_table$`zebrafish_obj@ident`)
+meta_table$`zebrafish_obj@ident` <- NULL
+meta_gills <- subset(meta_table, cluster %in% c(5, 21, 146, 55, 71, 60, 7))
+
+meta_gills_5 <- subset(meta_gills, cluster == 5)
+meta_gills_21 <- subset(meta_gills, cluster == 21)
+meta_gills_146 <- subset(meta_gills, cluster == 146)
+    # extract counts table from the seurat obj
+zebrafish_counts <- zebrafish_obj@raw.data
+    # subset counts as regular matrix
+gill_counts_1 <- as.data.frame(zebrafish_counts[, colnames(zebrafish_counts) %in% meta_gills_55$cell_names])
+gill_counts_5 <- as.data.frame(zebrafish_counts[, colnames(zebrafish_counts) %in% meta_gills_5$cell_names])
+gill_counts_21 <- as.data.frame(zebrafish_counts[, colnames(zebrafish_counts) %in% meta_gills_21$cell_names])
+gill_counts_146 <- as.data.frame(zebrafish_counts[, colnames(zebrafish_counts) %in% meta_gills_146$cell_names])
+   # converting zebrafish
+gill_bulk_zebrafish_cluster_5 <- as.data.frame(apply(gill_counts_5, 1, sum))
+colnames(gill_bulk_zebrafish_cluster_5) <- c("summed_counts_zebrafish")
+gill_bulk_zebrafish_cluster_5$gene <- rownames(gill_bulk_zebrafish_cluster_5)
+write.table(gill_bulk_zebrafish_cluster_5, file = "data/gill_bulk_zebrafish_cluster_5.tsv", sep = "\t")
+
+gill_bulk_zebrafish_cluster_21 <- as.data.frame(apply(gill_counts_21, 1, sum))
+colnames(gill_bulk_zebrafish_cluster_21) <- c("summed_counts_zebrafish")
+gill_bulk_zebrafish_cluster_21$gene <- rownames(gill_bulk_zebrafish_cluster_21)
+write.table(gill_bulk_zebrafish_cluster_21, file = "data/gill_bulk_zebrafish_cluster_21.tsv", sep = "\t")
+
+gill_bulk_zebrafish_cluster_146 <- as.data.frame(apply(gill_counts_146, 1, sum))
+colnames(gill_bulk_zebrafish_cluster_146) <- c("summed_counts_zebrafish")
+gill_bulk_zebrafish_cluster_146$gene <- rownames(gill_bulk_zebrafish_cluster_146)
+write.table(gill_bulk_zebrafish_cluster_146, file = "data/gill_bulk_zebrafish_cluster_146.tsv", sep = "\t")
+
+
+
+
+
+gill_bulk_zebrafish_cluster_5 <- read.table(file = "data/gill_bulk_zebrafish_cluster_5.tsv")
+gill_bulk_zebrafish_cluster_21 <- read.table(file = "data/gill_bulk_zebrafish_cluster_21.tsv")
+gill_bulk_zebrafish_cluster_146 <- read.table(file = "data/gill_bulk_zebrafish_cluster_146.tsv")
+
+meta_gills_55 <- subset(meta_gills, cluster == 55)
+gill_counts_55 <- as.data.frame(zebrafish_counts[, colnames(zebrafish_counts) %in% meta_gills_55$cell_names])
+gill_bulk_zebrafish_cluster_55 <- as.data.frame(apply(gill_counts_55, 1, sum))
+colnames(gill_bulk_zebrafish_cluster_55) <- c("summed_counts_zebrafish")
+gill_bulk_zebrafish_cluster_55$gene <- rownames(gill_bulk_zebrafish_cluster_55)
+
+meta_gills_71 <- subset(meta_gills, cluster == 71)
+gill_counts_71 <- as.data.frame(zebrafish_counts[, colnames(zebrafish_counts) %in% meta_gills_71$cell_names])
+gill_bulk_zebrafish_cluster_71 <- as.data.frame(apply(gill_counts_71, 1, sum))
+colnames(gill_bulk_zebrafish_cluster_71) <- c("summed_counts_zebrafish")
+gill_bulk_zebrafish_cluster_71$gene <- rownames(gill_bulk_zebrafish_cluster_71)
+
+meta_gills_60 <- subset(meta_gills, cluster == 60)
+gill_counts_60 <- as.data.frame(zebrafish_counts[, colnames(zebrafish_counts) %in% meta_gills_60$cell_names])
+gill_bulk_zebrafish_cluster_60 <- as.data.frame(apply(gill_counts_60, 1, sum))
+colnames(gill_bulk_zebrafish_cluster_60) <- c("summed_counts_zebrafish")
+gill_bulk_zebrafish_cluster_60$gene <- rownames(gill_bulk_zebrafish_cluster_60)
+
+meta_gills_7 <- subset(meta_gills, cluster == 7)
+gill_counts_7 <- as.data.frame(zebrafish_counts[, colnames(zebrafish_counts) %in% meta_gills_7$cell_names])
+gill_bulk_zebrafish_cluster_7 <- as.data.frame(apply(gill_counts_7, 1, sum))
+colnames(gill_bulk_zebrafish_cluster_7) <- c("summed_counts_zebrafish")
+gill_bulk_zebrafish_cluster_7$gene <- rownames(gill_bulk_zebrafish_cluster_7)
+```
+
+### 1 Zebrafish gill cluster vs non-blood Stickleback clusters (5 marked as Gill clusters a)
+
+
+```{r converting_data_to_bulk_rest_stickleback_zebrafish_cluster_5}
+# converting zebrafish
+# gill_bulk_zebrafish <- as.data.frame(apply(gill_counts, 1, sum))
+# colnames(gill_bulk_zebrafish) <- c("summed_counts_zebrafish")
+# gill_bulk_zebrafish$gene <- rownames(gill_bulk_zebrafish)
+# write.table(gill_bulk_zebrafish, file = "data/gill_bulk_zebrafish.tsv", sep = "\t")
+gill_bulk_zebrafish <- gill_bulk_zebrafish_cluster_5
+
+# converting stickleback ONLY REST
+gill_counts_stickleback_rest <- as.data.frame(rna.integrated.cluster.rest@assays$RNA@counts)
+gill_bulk_stickleback_rest <- as.data.frame(apply(gill_counts_stickleback_rest, 1, sum))
+gill_bulk_stickleback_rest$gene <- rownames(gill_bulk_stickleback_rest)
+
+# subsetting only common ids, probably vastly not optimal since I have not seen ENSEMBL ids in the zebrafish dataset, unlike the stickleback
+# ONLY HGNC WERE LEFT AFTER THE MERGER !!!!
+common_ids <- intersect(rownames(gill_bulk_stickleback_rest), rownames(gill_bulk_zebrafish))
+gill_bulk_stickleback_rest <- subset(gill_bulk_stickleback_rest, gene %in% common_ids)
+gill_bulk_zebrafish <- subset(gill_bulk_zebrafish, gene %in% common_ids)
+
+# combining in a single table for the scatterplot
+gill_bulk_both <- merge(gill_bulk_stickleback_rest, gill_bulk_zebrafish, by = "gene")
+colnames(gill_bulk_both) <- c("gene", "stickleback_counts", "zebrafish_counts")
+```
+
+```{r scatter_plot_comparing_stickleback_and_zebrafish_pseudobulk_REST_zebrafish_cluster_5}
+require(ggpubr)
+
+gill_bulk_both_log <- transform(gill_bulk_both, stickleback_counts = log(stickleback_counts), zebrafish_counts = log(zebrafish_counts))
+
+ggscatter(gill_bulk_both_log,
+      x = "stickleback_counts", y = "zebrafish_counts", size = 1.5) +
+      theme_gray() +
+      stat_cor(method = "pearson", label.x = -5, label.y = 5, size=3, color="#696969")+
+      # coord_cartesian(xlim = c(-5, 5), ylim = c(-5, 5)) +
+      labs(title = "Corelation scatter plot pseudobulk stickleback vs zebrafish cluster 5")
+```
+
+### 1 Zebrafish gill cluster vs non-blood Stickleback clusters (21 marked as Gill clusters b)
+
+
+```{r converting_data_to_bulk_rest_stickleback_zebrafish_cluster_21}
+# converting zebrafish
+# gill_bulk_zebrafish <- as.data.frame(apply(gill_counts, 1, sum))
+# colnames(gill_bulk_zebrafish) <- c("summed_counts_zebrafish")
+# gill_bulk_zebrafish$gene <- rownames(gill_bulk_zebrafish)
+# write.table(gill_bulk_zebrafish, file = "data/gill_bulk_zebrafish.tsv", sep = "\t")
+gill_bulk_zebrafish <- gill_bulk_zebrafish_cluster_21
+
+# converting stickleback ONLY REST
+gill_counts_stickleback_rest <- as.data.frame(rna.integrated.cluster.rest@assays$RNA@counts)
+gill_bulk_stickleback_rest <- as.data.frame(apply(gill_counts_stickleback_rest, 1, sum))
+gill_bulk_stickleback_rest$gene <- rownames(gill_bulk_stickleback_rest)
+
+# subsetting only common ids, probably vastly not optimal since I have not seen ENSEMBL ids in the zebrafish dataset, unlike the stickleback
+# ONLY HGNC WERE LEFT AFTER THE MERGER !!!!
+common_ids <- intersect(rownames(gill_bulk_stickleback_rest), rownames(gill_bulk_zebrafish))
+gill_bulk_stickleback_rest <- subset(gill_bulk_stickleback_rest, gene %in% common_ids)
+gill_bulk_zebrafish <- subset(gill_bulk_zebrafish, gene %in% common_ids)
+
+# combining in a single table for the scatterplot
+gill_bulk_both <- merge(gill_bulk_stickleback_rest, gill_bulk_zebrafish, by = "gene")
+colnames(gill_bulk_both) <- c("gene", "stickleback_counts", "zebrafish_counts")
+```
+
+```{r scatter_plot_comparing_stickleback_and_zebrafish_pseudobulk_REST_zebrafish_cluster_21}
+require(ggpubr)
+
+gill_bulk_both_log <- transform(gill_bulk_both, stickleback_counts = log(stickleback_counts), zebrafish_counts = log(zebrafish_counts))
+
+ggscatter(gill_bulk_both_log,
+      x = "stickleback_counts", y = "zebrafish_counts", size = 1.5) +
+      theme_gray() +
+      stat_cor(method = "pearson", label.x = -5, label.y = 5, size=3, color="#696969")+
+      # coord_cartesian(xlim = c(-5, 5), ylim = c(-5, 5)) +
+      labs(title = "Corelation scatter plot pseudobulk stickleback vs zebrafish cluster 21")
+```
+
+### 1 Zebrafish gill cluster vs non-blood Stickleback clusters (146 marked as Gill clusters c)
+
+
+```{r converting_data_to_bulk_rest_stickleback_zebrafish_cluster_146}
+# converting zebrafish
+# gill_bulk_zebrafish <- as.data.frame(apply(gill_counts, 1, sum))
+# colnames(gill_bulk_zebrafish) <- c("summed_counts_zebrafish")
+# gill_bulk_zebrafish$gene <- rownames(gill_bulk_zebrafish)
+# write.table(gill_bulk_zebrafish, file = "data/gill_bulk_zebrafish.tsv", sep = "\t")
+gill_bulk_zebrafish <- gill_bulk_zebrafish_cluster_146
+
+# converting stickleback ONLY REST
+gill_counts_stickleback_rest <- as.data.frame(rna.integrated.cluster.rest@assays$RNA@counts)
+gill_bulk_stickleback_rest <- as.data.frame(apply(gill_counts_stickleback_rest, 1, sum))
+gill_bulk_stickleback_rest$gene <- rownames(gill_bulk_stickleback_rest)
+
+# subsetting only common ids, probably vastly not optimal since I have not seen ENSEMBL ids in the zebrafish dataset, unlike the stickleback
+# ONLY HGNC WERE LEFT AFTER THE MERGER !!!!
+common_ids <- intersect(rownames(gill_bulk_stickleback_rest), rownames(gill_bulk_zebrafish))
+gill_bulk_stickleback_rest <- subset(gill_bulk_stickleback_rest, gene %in% common_ids)
+gill_bulk_zebrafish <- subset(gill_bulk_zebrafish, gene %in% common_ids)
+
+# combining in a single table for the scatterplot
+gill_bulk_both <- merge(gill_bulk_stickleback_rest, gill_bulk_zebrafish, by = "gene")
+colnames(gill_bulk_both) <- c("gene", "stickleback_counts", "zebrafish_counts")
+```
+
+```{r scatter_plot_comparing_stickleback_and_zebrafish_pseudobulk_REST_zebrafish_cluster_146}
+require(ggpubr)
+
+gill_bulk_both_log <- transform(gill_bulk_both, stickleback_counts = log(stickleback_counts), zebrafish_counts = log(zebrafish_counts))
+
+ggscatter(gill_bulk_both_log,
+      x = "stickleback_counts", y = "zebrafish_counts", size = 1.5) +
+      theme_gray() +
+      stat_cor(method = "pearson", label.x = -5, label.y = 5, size=3, color="#696969")+
+      # coord_cartesian(xlim = c(-5, 5), ylim = c(-5, 5)) +
+      labs(title = "Corelation scatter plot pseudobulk stickleback vs zebrafish cluster 146")
+```
+
+
+
+### 1 Zebrafish gill cluster vs non-blood Stickleback clusters (55 marked as Liver cells)
+
+
+```{r converting_data_to_bulk_rest_stickleback_zebrafish_cluster_55}
+# converting zebrafish
+# gill_bulk_zebrafish <- as.data.frame(apply(gill_counts, 1, sum))
+# colnames(gill_bulk_zebrafish) <- c("summed_counts_zebrafish")
+# gill_bulk_zebrafish$gene <- rownames(gill_bulk_zebrafish)
+# write.table(gill_bulk_zebrafish, file = "data/gill_bulk_zebrafish.tsv", sep = "\t")
+gill_bulk_zebrafish <- gill_bulk_zebrafish_cluster_55
+
+# converting stickleback ONLY REST
+gill_counts_stickleback_rest <- as.data.frame(rna.integrated.cluster.rest@assays$RNA@counts)
+gill_bulk_stickleback_rest <- as.data.frame(apply(gill_counts_stickleback_rest, 1, sum))
+gill_bulk_stickleback_rest$gene <- rownames(gill_bulk_stickleback_rest)
+
+# subsetting only common ids, probably vastly not optimal since I have not seen ENSEMBL ids in the zebrafish dataset, unlike the stickleback
+# ONLY HGNC WERE LEFT AFTER THE MERGER !!!!
+common_ids <- intersect(rownames(gill_bulk_stickleback_rest), rownames(gill_bulk_zebrafish))
+gill_bulk_stickleback_rest <- subset(gill_bulk_stickleback_rest, gene %in% common_ids)
+gill_bulk_zebrafish <- subset(gill_bulk_zebrafish, gene %in% common_ids)
+
+# combining in a single table for the scatterplot
+gill_bulk_both <- merge(gill_bulk_stickleback_rest, gill_bulk_zebrafish, by = "gene")
+colnames(gill_bulk_both) <- c("gene", "stickleback_counts", "zebrafish_counts")
+```
+
+```{r scatter_plot_comparing_stickleback_and_zebrafish_pseudobulk_REST_zebrafish_cluster_55}
+require(ggpubr)
+
+gill_bulk_both_log <- transform(gill_bulk_both, stickleback_counts = log(stickleback_counts), zebrafish_counts = log(zebrafish_counts))
+
+ggscatter(gill_bulk_both_log,
+      x = "stickleback_counts", y = "zebrafish_counts", size = 1.5) +
+      theme_gray() +
+      stat_cor(method = "pearson", label.x = -5, label.y = 5, size=3, color="#696969")+
+      # coord_cartesian(xlim = c(-5, 5), ylim = c(-5, 5)) +
+      labs(title = "Corelation scatter plot pseudobulk stickleback vs zebrafish cluster 55")
+```
+
+### 1 Zebrafish gill cluster vs non-blood Stickleback clusters (71 marked as Macrophage cells)
+
+
+```{r converting_data_to_bulk_rest_stickleback_zebrafish_cluster_71}
+# converting zebrafish
+# gill_bulk_zebrafish <- as.data.frame(apply(gill_counts, 1, sum))
+# colnames(gill_bulk_zebrafish) <- c("summed_counts_zebrafish")
+# gill_bulk_zebrafish$gene <- rownames(gill_bulk_zebrafish)
+# write.table(gill_bulk_zebrafish, file = "data/gill_bulk_zebrafish.tsv", sep = "\t")
+gill_bulk_zebrafish <- gill_bulk_zebrafish_cluster_71
+
+# converting stickleback ONLY REST
+gill_counts_stickleback_rest <- as.data.frame(rna.integrated.cluster.rest@assays$RNA@counts)
+gill_bulk_stickleback_rest <- as.data.frame(apply(gill_counts_stickleback_rest, 1, sum))
+gill_bulk_stickleback_rest$gene <- rownames(gill_bulk_stickleback_rest)
+
+# subsetting only common ids, probably vastly not optimal since I have not seen ENSEMBL ids in the zebrafish dataset, unlike the stickleback
+# ONLY HGNC WERE LEFT AFTER THE MERGER !!!!
+common_ids <- intersect(rownames(gill_bulk_stickleback_rest), rownames(gill_bulk_zebrafish))
+gill_bulk_stickleback_rest <- subset(gill_bulk_stickleback_rest, gene %in% common_ids)
+gill_bulk_zebrafish <- subset(gill_bulk_zebrafish, gene %in% common_ids)
+
+# combining in a single table for the scatterplot
+gill_bulk_both <- merge(gill_bulk_stickleback_rest, gill_bulk_zebrafish, by = "gene")
+colnames(gill_bulk_both) <- c("gene", "stickleback_counts", "zebrafish_counts")
+```
+
+```{r scatter_plot_comparing_stickleback_and_zebrafish_pseudobulk_REST_zebrafish_cluster_71}
+require(ggpubr)
+
+gill_bulk_both_log <- transform(gill_bulk_both, stickleback_counts = log(stickleback_counts), zebrafish_counts = log(zebrafish_counts))
+
+ggscatter(gill_bulk_both_log,
+      x = "stickleback_counts", y = "zebrafish_counts", size = 1.5) +
+      theme_gray() +
+      stat_cor(method = "pearson", label.x = -5, label.y = 5, size=3, color="#696969")+
+      # coord_cartesian(xlim = c(-5, 5), ylim = c(-5, 5)) +
+      labs(title = "Corelation scatter plot pseudobulk stickleback vs zebrafish cluster 71")
+```
+
+### 1 Zebrafish gill cluster vs non-blood Stickleback clusters (60 marked as Retina cells)
+
+
+```{r converting_data_to_bulk_rest_stickleback_zebrafish_cluster_60}
+# converting zebrafish
+# gill_bulk_zebrafish <- as.data.frame(apply(gill_counts, 1, sum))
+# colnames(gill_bulk_zebrafish) <- c("summed_counts_zebrafish")
+# gill_bulk_zebrafish$gene <- rownames(gill_bulk_zebrafish)
+# write.table(gill_bulk_zebrafish, file = "data/gill_bulk_zebrafish.tsv", sep = "\t")
+gill_bulk_zebrafish <- gill_bulk_zebrafish_cluster_60
+
+# converting stickleback ONLY REST
+gill_counts_stickleback_rest <- as.data.frame(rna.integrated.cluster.rest@assays$RNA@counts)
+gill_bulk_stickleback_rest <- as.data.frame(apply(gill_counts_stickleback_rest, 1, sum))
+gill_bulk_stickleback_rest$gene <- rownames(gill_bulk_stickleback_rest)
+
+# subsetting only common ids, probably vastly not optimal since I have not seen ENSEMBL ids in the zebrafish dataset, unlike the stickleback
+# ONLY HGNC WERE LEFT AFTER THE MERGER !!!!
+common_ids <- intersect(rownames(gill_bulk_stickleback_rest), rownames(gill_bulk_zebrafish))
+gill_bulk_stickleback_rest <- subset(gill_bulk_stickleback_rest, gene %in% common_ids)
+gill_bulk_zebrafish <- subset(gill_bulk_zebrafish, gene %in% common_ids)
+
+# combining in a single table for the scatterplot
+gill_bulk_both <- merge(gill_bulk_stickleback_rest, gill_bulk_zebrafish, by = "gene")
+colnames(gill_bulk_both) <- c("gene", "stickleback_counts", "zebrafish_counts")
+```
+
+```{r scatter_plot_comparing_stickleback_and_zebrafish_pseudobulk_REST_zebrafish_cluster_60}
+require(ggpubr)
+
+gill_bulk_both_log <- transform(gill_bulk_both, stickleback_counts = log(stickleback_counts), zebrafish_counts = log(zebrafish_counts))
+
+ggscatter(gill_bulk_both_log,
+      x = "stickleback_counts", y = "zebrafish_counts", size = 1.5) +
+      theme_gray() +
+      stat_cor(method = "pearson", label.x = -5, label.y = 5, size=3, color="#696969")+
+      # coord_cartesian(xlim = c(-5, 5), ylim = c(-5, 5)) +
+      labs(title = "Corelation scatter plot pseudobulk stickleback vs zebrafish cluster 60")
+```
+
+### 1 Zebrafish gill cluster vs non-blood Stickleback clusters (7 marked as Muscle cells)
+
+
+```{r converting_data_to_bulk_rest_stickleback_zebrafish_cluster_7}
+# converting zebrafish
+# gill_bulk_zebrafish <- as.data.frame(apply(gill_counts, 1, sum))
+# colnames(gill_bulk_zebrafish) <- c("summed_counts_zebrafish")
+# gill_bulk_zebrafish$gene <- rownames(gill_bulk_zebrafish)
+# write.table(gill_bulk_zebrafish, file = "data/gill_bulk_zebrafish.tsv", sep = "\t")
+gill_bulk_zebrafish <- gill_bulk_zebrafish_cluster_7
+
+# converting stickleback ONLY REST
+gill_counts_stickleback_rest <- as.data.frame(rna.integrated.cluster.rest@assays$RNA@counts)
+gill_bulk_stickleback_rest <- as.data.frame(apply(gill_counts_stickleback_rest, 1, sum))
+gill_bulk_stickleback_rest$gene <- rownames(gill_bulk_stickleback_rest)
+
+# subsetting only common ids, probably vastly not optimal since I have not seen ENSEMBL ids in the zebrafish dataset, unlike the stickleback
+# ONLY HGNC WERE LEFT AFTER THE MERGER !!!!
+common_ids <- intersect(rownames(gill_bulk_stickleback_rest), rownames(gill_bulk_zebrafish))
+gill_bulk_stickleback_rest <- subset(gill_bulk_stickleback_rest, gene %in% common_ids)
+gill_bulk_zebrafish <- subset(gill_bulk_zebrafish, gene %in% common_ids)
+
+# combining in a single table for the scatterplot
+gill_bulk_both <- merge(gill_bulk_stickleback_rest, gill_bulk_zebrafish, by = "gene")
+colnames(gill_bulk_both) <- c("gene", "stickleback_counts", "zebrafish_counts")
+```
+
+```{r scatter_plot_comparing_stickleback_and_zebrafish_pseudobulk_REST_zebrafish_cluster_7}
+require(ggpubr)
+
+gill_bulk_both_log <- transform(gill_bulk_both, stickleback_counts = log(stickleback_counts), zebrafish_counts = log(zebrafish_counts))
+
+ggscatter(gill_bulk_both_log,
+      x = "stickleback_counts", y = "zebrafish_counts", size = 1.5) +
+      theme_gray() +
+      stat_cor(method = "pearson", label.x = -5, label.y = 5, size=3, color="#696969")+
+      # coord_cartesian(xlim = c(-5, 5), ylim = c(-5, 5)) +
+      labs(title = "Corelation scatter plot pseudobulk stickleback vs zebrafish cluster 7")
+```
+
+

@@ -1,0 +1,133 @@
+---
+title: "Histograms of pairwise distance saline/freshwater and chi-square test for phenotype distribution in clusters"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(ggplot2)
+library(dplyr)
+library(Seurat)
+```
+
+```{r separating_blood_cluster}
+load(file = "data/rna.integrated.filtered.after.clustering.obj.RData")
+rna.integrated.cluster.blood <- subset(rna.integrated, idents = 0)
+rna.integrated.cluster.rest <- subset(rna.integrated, idents = c(1,2))
+```
+
+### PCA plot of the blood cluster by the samples
+
+```{r blood_cluster_PCA_plot}
+rna.integrated.cluster.blood <- FindNeighbors(rna.integrated.cluster.blood, dims = 1:15)
+rna.integrated.cluster.blood  <- FindClusters(rna.integrated.cluster.blood, resolution = 0.3)
+rna.integrated.cluster.blood <- RunPCA(rna.integrated.cluster.blood)
+DimPlot(rna.integrated.cluster.blood, reduction = "pca", group.by = "orig.ident")
+```
+
+```{r calculate_distances_from_pca}
+set.seed(42)
+pca_raw <- as.data.frame(rna.integrated.cluster.blood@reductions[["pca"]]@cell.embeddings)
+pca_raw$sample <- rna.integrated.cluster.blood@meta.data[["orig.ident"]]
+pca_raw <- pca_raw[sample(nrow(pca_raw)), c(1:10,51)]
+pca_saline <- subset(pca_raw, sample %in% c("stickleback.sample.1", "stickleback.sample.2"))[,1:10]
+pca_freshwater <- subset(pca_raw, sample %in% c("stickleback.sample.3", "stickleback.sample.4"))[,1:10]
+
+pca_saline_1_half <- pca_saline[1:4672,]
+pca_saline_2_half <- pca_saline[4674:nrow(pca_saline),]
+colnames(pca_saline_2_half) <- paste(colnames(pca_saline_2_half), ".2half", sep="")
+pca_salineVsaline <- cbind(pca_saline_1_half, pca_saline_2_half)
+dist_matrix_salineVsaline <- fields::rdist(pca_saline_2_half, pca_saline_2_half)
+
+dist_matrix_salineVfreshwater <- fields::rdist(pca_saline, pca_freshwater[1:nrow(pca_saline),])
+
+pca_freshwater_1_half <- pca_freshwater[1:4907,]
+pca_freshwater_2_half <- pca_freshwater[4909:nrow(pca_freshwater),]
+colnames(pca_freshwater_2_half) <- paste(colnames(pca_freshwater_2_half), ".2half", sep="")
+pca_freshwaterVfreshwater <- cbind(pca_freshwater_1_half, pca_freshwater_2_half)
+dist_matrix_freshwaterVfreshwater <- fields::rdist(pca_freshwater_2_half, pca_freshwater_2_half)
+
+
+# dist_salineVsaline <- apply(pca_salineVsaline, Eucle)
+```
+
+### Histograms of pairwise distance saline/freshwater
+
+```{r parwise_histrograms_of_distances_between_diff_water_types}
+frame_for_hist <- data.frame(dist = c(as.vector(dist_matrix_salineVsaline), as.vector(dist_matrix_salineVfreshwater), as.vector(dist_matrix_freshwaterVfreshwater)),
+                             pair = c(rep("salineVsaline", length(dist_matrix_salineVsaline)),
+                                      rep("salineVfreshwater", length(dist_matrix_salineVfreshwater)),
+                                      rep("freshwaterVfreshwater", length(dist_matrix_freshwaterVfreshwater))))
+
+mu <- plyr::ddply(frame_for_hist, "pair", summarise, grp.mean=mean(dist))
+
+small_frame_for_hist <- frame_for_hist[sample(nrow(frame_for_hist), 1000000),]
+
+p <- ggplot(small_frame_for_hist, aes(x=dist, fill=pair, color=pair)) +
+  geom_histogram(position="identity", alpha=0.5, binwidth = 0.25) + 
+  geom_vline(data=mu, aes(xintercept=grp.mean, color=pair),
+             linetype="dashed")
+p
+```
+
+
+
+
+```{r salineVsaline_histogram}
+# hist(dist_matrix_salineVsaline, breaks=168)
+```
+
+```{r salineVfreshwater_histogram}
+# hist(dist_matrix_salineVfreshwater, breaks=168)
+```
+
+```{r freshwaterVfreshwater_histogram}
+# hist(dist_matrix_freshwaterVfreshwater, breaks=84)
+```
+
+### UMAP plot of clusters excluding blood
+
+```{r non_blood_cells_umap}
+#=========================== Rest cluster UMAP plot  =================================
+rna.integrated.cluster.rest <- FindNeighbors(rna.integrated.cluster.rest, dims = 1:15)
+rna.integrated.cluster.rest  <- FindClusters(rna.integrated.cluster.rest, resolution = 0.15)
+rna.integrated.cluster.rest <- RunUMAP(rna.integrated.cluster.rest, dims = 1:15)
+DimPlot(rna.integrated.cluster.rest, reduction = "umap")
+```
+
+### PCA plot of clusters excluding blood
+
+```{r non_blood_cells_pca}
+rna.integrated.cluster.rest <- RunPCA(rna.integrated.cluster.rest)
+DimPlot(rna.integrated.cluster.rest, reduction = "pca")
+```
+
+### Chi-square test for the distribution of saline/freshwater across samples
+
+```{r chi_square_test_for_sample_distribution_in_clusters}
+samples_over_clusters <- data.frame(sample = rna.integrated.cluster.rest@meta.data[["orig.ident"]],
+                                    cluster = as.character(rna.integrated.cluster.rest@active.ident))
+water_sample_table <- data.frame(sample = unique(rna.integrated.cluster.rest@meta.data[["orig.ident"]]),
+                                 water = c("saline", "saline", "freshwater", "freshwater"))
+samples_over_clusters <- merge(samples_over_clusters, water_sample_table, by = "sample")
+
+# normalizing for the difference in cell numbers salineVfreshwater for the whole run
+correction_coefficient = nrow(pca_freshwater) / nrow(pca_saline)
+
+table_as_frame <- as.data.frame(samples_over_clusters_table)
+samples_over_clusters_matrix <- as.data.frame(matrix(table_as_frame$Freq, ncol=2, dimnames = list(unique(table_as_frame$Var1), unique(table_as_frame$Var2))))
+
+samples_over_clusters_matrix$freshwater <- samples_over_clusters_matrix$freshwater / correction_coefficient
+as.matrix(samples_over_clusters_matrix)
+
+chisq.test(samples_over_clusters_matrix, correct = FALSE)
+```
+
+Frequencies of cells have been normalized to adjust for different number of sequenced freshwater and saline cells. The table above shows normalized numbers of cells.
+
+
+

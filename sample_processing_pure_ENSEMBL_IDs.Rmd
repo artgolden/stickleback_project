@@ -1,0 +1,84 @@
+---
+title: "Seurat sample re-processing with pure ENSEMBL IDs"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/data/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(ggplot2)
+library(dplyr)
+library(Seurat)
+```
+
+```{r}
+#=============================================== SETUP =============================================
+# Merging all samples into one seurat object
+cdna1.data <- Read10X(data.dir = "cdna1_counts/", gene.column = 1)
+cdna2.data <- Read10X(data.dir = "cdna2_counts/", gene.column = 1)
+cdna3.data <- Read10X(data.dir = "cdna3_counts/", gene.column = 1)
+cdna4.data <- Read10X(data.dir = "cdna4_counts/", gene.column = 1)
+
+
+```
+
+## Sample 1 QC
+
+```{r fig.width=11}
+cdna1 <- CreateSeuratObject(counts = cdna1.data, project = "stickleback.sample.1")
+cdna1[["percent.mt"]] <- PercentageFeatureSet(cdna1, pattern = "^mt-"  )
+cdna1 <- subset(cdna1, subset = nFeature_RNA > 100 & nFeature_RNA < 500 & percent.mt < 2)
+VlnPlot(cdna1, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, pt.size = 0.1) 
+plot1 <- FeatureScatter(cdna1, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(cdna1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+CombinePlots(plots = list(plot1, plot2))
+```
+
+## Sample 2 QC
+
+```{r  fig.width=11}
+cdna2 <- CreateSeuratObject(counts = cdna2.data, project = "stickleback.sample.2")
+cdna2[["percent.mt"]] <- PercentageFeatureSet(cdna2, pattern = "^mt-"  )
+cdna2 <- subset(cdna2, subset = nFeature_RNA > 100 & nFeature_RNA < 500 & percent.mt < 2)
+VlnPlot(cdna2, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, pt.size = 0.1) 
+plot1 <- FeatureScatter(cdna2, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(cdna2, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+CombinePlots(plots = list(plot1, plot2))
+```
+
+## Sample 3 QC
+
+```{r  fig.width=11}
+cdna3 <- CreateSeuratObject(counts = cdna3.data, project = "stickleback.sample.3")
+cdna3[["percent.mt"]] <- PercentageFeatureSet(cdna3, pattern = "^mt-" )
+cdna3 <- subset(cdna3, subset = nFeature_RNA > 100 & nFeature_RNA < 500 & percent.mt < 2)
+VlnPlot(cdna3, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, pt.size = 0.1) 
+plot1 <- FeatureScatter(cdna3, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(cdna3, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+CombinePlots(plots = list(plot1, plot2))
+```
+
+## Sample 4 QC
+
+```{r fig.width=11}
+cdna4 <- CreateSeuratObject(counts = cdna4.data, project = "stickleback.sample.4")
+cdna4[["percent.mt"]] <- PercentageFeatureSet(cdna4, pattern = "^mt-"  )
+cdna4 <- subset(cdna4, subset = nFeature_RNA > 100 & nFeature_RNA < 500 & percent.mt < 2)
+VlnPlot(cdna4, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, pt.size = 0.1) 
+plot1 <- FeatureScatter(cdna4, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(cdna4, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+CombinePlots(plots = list(plot1, plot2))
+```
+
+```{r}
+stickleback.rna <- merge(x = cdna1, y = c(cdna2, cdna3, cdna4), add.cell.ids = c("cDNA1", "cDNA2", "cDNA3", "cDNA4"), project = "stickleback.rna" )
+
+saveRDS(stickleback.rna, file = "stickleback.rna.seurat.samples.PURE_ENSEMBLE.rds")
+# stickleback.rna <- readRDS(file = "stickleback.rna.seurat.obj.filtered.rds")
+
+# stickleback.rna <- subset(stickleback.rna, subset = nFeature_RNA > 50 & nFeature_RNA < 1000)
+rm(cdna1.data, cdna2.data, cdna3.data, cdna4.data, cdna1, cdna2, cdna3, cdna4)
+```

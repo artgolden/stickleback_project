@@ -1,0 +1,258 @@
+---
+title: "Processing scRNA-seq dataset of stickleback fish"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/data/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(ggplot2)
+library(dplyr)
+library(Seurat)
+```
+
+```{r}
+#=============================================== SETUP =============================================
+# Merging all samples into one seurat object
+cdna1.data <- Read10X(data.dir = "cdna1_counts/", gene.column = 2)
+cdna2.data <- Read10X(data.dir = "cdna2_counts/", gene.column = 2)
+cdna3.data <- Read10X(data.dir = "cdna3_counts/", gene.column = 2)
+cdna4.data <- Read10X(data.dir = "cdna4_counts/", gene.column = 2)
+
+
+```
+
+## Sample 1 QC
+
+```{r fig.width=11}
+cdna1 <- CreateSeuratObject(counts = cdna1.data, project = "stickleback.sample.1")
+cdna1[["percent.mt"]] <- PercentageFeatureSet(cdna1, pattern = "^mt-"  )
+cdna1 <- subset(cdna1, subset = nFeature_RNA > 100 & nFeature_RNA < 500 & percent.mt < 2)
+VlnPlot(cdna1, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, pt.size = 0.1) 
+plot1 <- FeatureScatter(cdna1, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(cdna1, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+CombinePlots(plots = list(plot1, plot2))
+```
+
+## Sample 2 QC
+
+```{r  fig.width=11}
+cdna2 <- CreateSeuratObject(counts = cdna2.data, project = "stickleback.sample.2")
+cdna2[["percent.mt"]] <- PercentageFeatureSet(cdna2, pattern = "^mt-"  )
+cdna2 <- subset(cdna2, subset = nFeature_RNA > 100 & nFeature_RNA < 500 & percent.mt < 2)
+VlnPlot(cdna2, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, pt.size = 0.1) 
+plot1 <- FeatureScatter(cdna2, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(cdna2, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+CombinePlots(plots = list(plot1, plot2))
+```
+
+## Sample 3 QC
+
+```{r  fig.width=11}
+cdna3 <- CreateSeuratObject(counts = cdna3.data, project = "stickleback.sample.3")
+cdna3[["percent.mt"]] <- PercentageFeatureSet(cdna3, pattern = "^mt-" )
+cdna3 <- subset(cdna3, subset = nFeature_RNA > 100 & nFeature_RNA < 500 & percent.mt < 2)
+VlnPlot(cdna3, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, pt.size = 0.1) 
+plot1 <- FeatureScatter(cdna3, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(cdna3, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+CombinePlots(plots = list(plot1, plot2))
+```
+
+## Sample 4 QC
+
+```{r fig.width=11}
+cdna4 <- CreateSeuratObject(counts = cdna4.data, project = "stickleback.sample.4")
+cdna4[["percent.mt"]] <- PercentageFeatureSet(cdna4, pattern = "^mt-"  )
+cdna4 <- subset(cdna4, subset = nFeature_RNA > 100 & nFeature_RNA < 500 & percent.mt < 2)
+VlnPlot(cdna4, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, pt.size = 0.1) 
+plot1 <- FeatureScatter(cdna4, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(cdna4, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+CombinePlots(plots = list(plot1, plot2))
+```
+
+```{r}
+stickleback.rna <- merge(x = cdna1, y = c(cdna2, cdna3, cdna4), add.cell.ids = c("cDNA1", "cDNA2", "cDNA3", "cDNA4"), project = "stickleback.rna" )
+
+saveRDS(stickleback.rna, file = "stickleback.rna.seurat.obj.filtered.rds")
+# stickleback.rna <- readRDS(file = "stickleback.rna.seurat.obj.filtered.rds")
+
+# stickleback.rna <- subset(stickleback.rna, subset = nFeature_RNA > 50 & nFeature_RNA < 1000)
+rm(cdna1.data, cdna2.data, cdna3.data, cdna4.data, cdna1, cdna2, cdna3, cdna4)
+```
+
+
+```{r}
+#=========================================== SEURAT QC ==============================================
+# stickleback.rna[["percent.mt"]] <- PercentageFeatureSet(stickleback.rna, pattern = "^mt-",  )
+# 
+# VlnPlot(stickleback.rna, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+```{r fig.width=15, fig.height=12}
+#=========================================== SEURAT QC ==============================================
+VlnPlot(stickleback.rna, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3, pt.size = 0.1) 
+  
+plot1 <- FeatureScatter(stickleback.rna, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(stickleback.rna, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+CombinePlots(plots = list(plot1, plot2))
+# stickleback.rna <- subset(stickleback.rna, subset = nFeature_RNA > 110 & nFeature_RNA < 500 & percent.mt < 2)
+```
+
+
+### Highest variable genes
+
+```{r fig.width=12, fig.height=9, warning=FALSE}
+#=========================================== SEURAT PIPELINE ==============================================
+stickleback.rna <- NormalizeData(stickleback.rna, normalization.method = "LogNormalize", scale.factor = 10000)
+
+stickleback.rna <- FindVariableFeatures(stickleback.rna, selection.method = "vst", nfeatures = 2000)
+# Identify the 10 most highly variable genes
+top10 <- head(VariableFeatures(stickleback.rna), 10)
+
+# plot variable features with and without labels
+plot1 <- VariableFeaturePlot(stickleback.rna)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+CombinePlots(plots = list(plot1, plot2))
+```
+
+```{r}
+all.genes <- rownames(stickleback.rna)
+stickleback.rna <- ScaleData(stickleback.rna, features = all.genes)
+```
+
+### PCA plot
+
+```{r}
+stickleback.rna <- RunPCA(stickleback.rna, features = VariableFeatures(object = stickleback.rna))
+DimPlot(stickleback.rna, reduction = "pca")
+
+```
+
+### Approximate dimensionality of the dataset
+
+```{r}
+ElbowPlot(stickleback.rna)
+```
+
+
+```{r}
+stickleback.rna <- FindNeighbors(stickleback.rna, dims = 1:15)
+stickleback.rna <- RunUMAP(stickleback.rna, dims = 1:15)
+saveRDS(stickleback.rna, file = "stickleback.rna.after.clustering.obj.rds")
+```
+
+### Clusterisation with low resolution (resolution = 0.06)
+```{r}
+stickleback.rna <- FindClusters(stickleback.rna, resolution = 0.06)
+DimPlot(stickleback.rna, reduction = "umap")
+```
+
+### Clusterisation with high resolution (resolution = 0.3)
+```{r}
+stickleback.rna <- FindClusters(stickleback.rna, resolution = 0.3)
+DimPlot(stickleback.rna, reduction = "umap")
+```
+
+### Distribution of cells by sample
+
+```{r}
+DimPlot(stickleback.rna, reduction = "umap", group.by = "orig.ident")
+```
+
+
+
+
+```{r}
+#======================================== SMAPLE BATCH CORRECTION =============================================
+# Should not be attempted before filtration step due to RAM consumption!!
+stickleback.rna.comb <- readRDS(file = "stickleback.rna.seurat.obj.filtered.rds")
+rna.list <- SplitObject(stickleback.rna.comb, split.by = "orig.ident")
+for (i in 1:length(rna.list)) {
+    rna.list[[i]] <- NormalizeData(rna.list[[i]], verbose = FALSE)
+    rna.list[[i]] <- FindVariableFeatures(rna.list[[i]], selection.method = "vst", 
+        nfeatures = 2000, verbose = FALSE)
+    # rna.list[[i]] <- subset(rna.list[[i]], subset = nFeature_RNA > 200 & nFeature_RNA < 2500) #Filtration step, essential!!
+}
+
+rna.anchors <- FindIntegrationAnchors(object.list = rna.list, dims = 1:20)
+rna.integrated <- IntegrateData(anchorset = rna.anchors, dims = 1:30)
+
+
+```
+
+## Integrated all 4 samples with batch correction
+
+```{r}
+#======================================== INTEGRATED DATA ANALYSIS =============================================
+if(!exists("rna.integrated")){
+  load(file = "rna.integrated.RData")
+}
+# switch to integrated assay. The variable features of this assay are automatically
+# set during IntegrateData
+DefaultAssay(rna.integrated) <- "integrated"
+
+# Run the standard workflow for visualization and clustering
+rna.integrated <- ScaleData(rna.integrated, verbose = FALSE)
+rna.integrated <- RunPCA(rna.integrated, npcs = 20, verbose = FALSE)
+rna.integrated <- RunUMAP(rna.integrated, reduction = "pca", dims = 1:20)
+p1 <- DimPlot(rna.integrated, reduction = "umap")
+# p2 <- DimPlot(rna.integrated, reduction = "umap", group.by = "celltype", label = TRUE, 
+#     repel = TRUE) + NoLegend()
+# plot_grid(p1, p2)
+p1
+```
+
+### Clusterisation of integrated data with low resolution (resolution = 0.06)
+
+```{r}
+rna.integrated <- FindNeighbors(rna.integrated, dims = 1:15)
+rna.integrated <- FindClusters(rna.integrated, resolution = 0.06)
+rna.integrated <- RunUMAP(rna.integrated, dims = 1:15)
+DimPlot(rna.integrated, reduction = "umap")
+
+```
+
+### Clusterisation of integrated data with higher resolution (resolution = 0.1)
+
+```{r}
+rna.integrated <- FindClusters(rna.integrated, resolution = 0.1)
+DimPlot(rna.integrated, reduction = "umap")
+save(rna.integrated, file = "rna.integrated.filtered.after.clustering.obj.RData")
+```
+
+
+### Top markers for each cluster, after batch correction (resolution = 0.1)
+```{r}
+#======================================== CUSTER MARKERS =============================================
+# RESOLUTION = 0.1
+rna.integrated <- FindClusters(rna.integrated, resolution = 0.1)
+markers_0.1.rna.integrated  <- FindAllMarkers(rna.integrated, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.15)
+write.csv(markers_0.1.rna.integrated, file = "stickleback.rna.batch.corrected.res_0.1_markers.csv")
+# markers_0.1.rna.integrated <- read.csv(file = "stickleback.rna.batch.corrected.res_0.1_markers.csv")
+
+#top for each cluster
+markers_0.1.rna.integrated %>% group_by(cluster) %>% select(avg_logFC, p_val_adj, cluster, gene) %>% top_n(n = 4, wt = avg_logFC)
+```
+
+```{r}
+#=================================== ID FIX ==========================================
+# load(file = "rna.integrated.filtered.after.clustering.obj.RData")
+mixed.ids <- data.frame(
+  index = 1:length(rownames(rna.integrated)),
+  mixed = rownames(rna.integrated))
+hgnc.ids <- mixed.ids[grep("^ENSGACG", mixed.ids$mixed, invert = TRUE),]
+
+raw_cdna1 <- Read10X(data.dir = "cdna1_counts/", gene.column = 1)
+cdna1.features <- read.delim(file = "cdna1_counts/features.tsv.gz", col.names = c("ensembl_id", "mixed_id", "type"))
+
+```
+
+```{r}
+#=================================== Count UMIs per cluster ==========================================
+load(file = "rna.integrated.filtered.after.clustering.obj.RData")
+rna.integrated.cluster.1 <- subset(rna.integrated, idents = 1)
+rna.integrated.cluster.2 <- subset(rna.integrated, idents = 2)
+```
