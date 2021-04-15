@@ -146,7 +146,9 @@ save(comb_counts_matrix, file = "data/scATAC/combined_downsampled_counts_matrix.
 ```
 
 ```{r test_if_downsampling_worked}
+# load(file = "data/scATAC/combined_downsampled_counts_matrix.Rdata")
 counts_per_cell <- colSums(comb_counts_matrix)
+saline_length <- table(combined@meta.data[["sample"]])[["atac1"]] + table(combined@meta.data[["sample"]])[["atac2"]]
 mean_saline_counts_per_cell_downsampled <- mean(counts_per_cell[1:saline_length])
 mean_freshwater_counts_per_cell <- mean(counts_per_cell[-(1:saline_length)])
 # the downsampling did not work in regard to counts, mean counts per cell are different for saline and freshwater
@@ -171,7 +173,7 @@ l_freshwater = num_saline_cells + 1
 r_freshwater = ncol(comb_counts_matrix)
 
 
-output <- apply(comb_counts_matrixcomb_counts_matrixcomb_counts_matrixcomb_counts_matrixcomb_counts_matrixcomb_counts_matrixcomb_counts_matrixcomb_counts_matrix, 1, function(row){
+output <- apply(comb_counts_matrix, 1, function(row){
   # message(paste0("row = ", row))
   x <- row[1:r_saline]
   x <- x[x != 0 & !is.na(x)]
@@ -189,8 +191,31 @@ output <- apply(comb_counts_matrixcomb_counts_matrixcomb_counts_matrixcomb_count
   # return(data.frame(test = sum(row[1:saline_right_boundary]), test.l.1 = length(row[1:saline_right_boundary]), test.l.2 = length(row[freshwater_left_boundary:freshwater_right_boundary])))
 })
 saline_vs_freshwater_varience_table <- do.call(rbind,output)
-saline_vs_freshwater_varience_table_filtered_downsampled <- filter(saline_vs_freshwater_varience_table,  p_val < 0.05 & f_ratio > 0 & f_ratio != Inf & p_val != 0)
+saline_vs_freshwater_varience_table %>% 
+  dplyr::filter(p_val < 0.05 & f_ratio > 0 & f_ratio != Inf & p_val != 0) %>% 
+  rownames_to_column(var = "peak") -> saline_vs_freshwater_varience_table_filtered_downsampled
+
+load(file = "data/scATAC/ga_granges_annotation.RData")
+annotations <- ga_tx_merged
+genome(annotations) <- "gasAcu1"
+
+# add the gene information to the object
+Annotation(combined) <- annotations
+
+
+# annotate peaks vs cells matrix with genes
+peaks_in_combined_obj_annotated <- ClosestFeature(
+  object = combined,
+  regions = StringToGRanges(rownames(combined), sep = c("-", "-"))
+)
+
+saline_vs_freshwater_varience_table_filtered_downsampled_annotated <- inner_join(saline_vs_freshwater_varience_table_filtered_downsampled, peaks_in_combined_obj_annotated, by = c("peak" = "query_region"))
 ```
+
+```{r}
+write_csv(saline_vs_freshwater_varience_table_filtered_downsampled_annotated, file = "data/scATAC/saline_vs_freshwater_varience_table_on_balanced_matrix_based_on_peaks_height_filtered.csv")
+```
+
 
 ```{r}
 s_f_var_table_filtered <- read_csv("data/scATAC/saline_vs_freshwater_varience_table_filtered.csv")
@@ -208,7 +233,17 @@ paste0("AFTER downsampling, mean varience difference ratio: ", mean(saline_vs_fr
 ## Calculating varience difference ratio based on the number of non-zero peaks per gene
 
 
+
+
 ```{r}
+load(file = "data/scATAC/ga_granges_annotation.RData")
+annotations <- ga_tx_merged
+genome(annotations) <- "gasAcu1"
+
+# add the gene information to the object
+Annotation(combined) <- annotations
+
+
 # annotate peaks vs cells matrix with genes
 peaks_in_combined_obj_annotated <- ClosestFeature(
   object = combined,
@@ -242,7 +277,14 @@ output <- apply(num_nonzero_peaks_in_genes_matrix, 1, function(row){
   # return(data.frame(test = sum(row[1:saline_right_boundary]), test.l.1 = length(row[1:saline_right_boundary]), test.l.2 = length(row[freshwater_left_boundary:freshwater_right_boundary])))
 })
 num_nonzero_peaks_in_genes_varience_table <- do.call(rbind,output)
-num_nonzero_peaks_in_genes_varience_table_filtered_downsampled <- filter(num_nonzero_peaks_in_genes_varience_table,  p_val < 0.05 & f_ratio > 0 & f_ratio != Inf & p_val != 0)
+# num_nonzero_peaks_in_genes_varience_table_filtered_downsampled <- filter(num_nonzero_peaks_in_genes_varience_table,  p_val < 0.05 & f_ratio > 0 & f_ratio != Inf & p_val != 0)
+num_nonzero_peaks_in_genes_varience_table %>% 
+  dplyr::filter(p_val < 0.05 & f_ratio > 0 & f_ratio != Inf & p_val != 0) %>% 
+  rownames_to_column(var = "gene") -> num_nonzero_peaks_in_genes_varience_table_filtered_downsampled
+```
+
+```{r}
+write_csv(num_nonzero_peaks_in_genes_varience_table_filtered_downsampled, file = "data/scATAC/saline_vs_freshwater_varience_table_on_balanced_matrix_with_number_of_peaks_per_gene_filtered.csv")
 ```
 
 ```{r}
