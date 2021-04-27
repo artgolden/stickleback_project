@@ -57,6 +57,13 @@ var_table_peaks_height %>% filter(f_ratio < saline_top_threshold) -> bottom_heig
 top_genes_saline <- stickleback_to_zebrafish_IDs(intersect(bottom_binarized$gene, bottom_height$gene_id), conversion_table)
 ```
 
+```{r export_genes_found}
+list(freshwater_genes = intersect(top_binarized$gene, top_height$gene_id),
+       saline_genes = intersect(bottom_binarized$gene, bottom_height$gene_id)) %>% 
+  saveRDS(file = "data/scATAC/atac_var_diff_genes.rds")
+```
+
+
 ```{r GO_analysis_of_the_subsets}
 require(clusterProfiler)
 GO_p_value_threshold <- 0.1

@@ -1,0 +1,110 @@
+---
+title: "Analysis of genes found to be differentially variable by scATAC data"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+# library(Signac)
+library(Seurat)
+# library(GenomeInfoDb)
+# library(patchwork)
+set.seed(42)
+```
+
+```{r}
+#TODO:
+#  - import diff variable genes from scATAC analysis
+#  - import table from scRNA analysis 
+#  - intersect tables
+#  - 
+```
+
+```{r import_atac_genes}
+atac_var_diff_genes <- readRDS(file = "data/scATAC/atac_var_diff_genes.rds")
+```
+
+```{r import_rna_genes}
+rna_var_diff_genes <- read_csv(file = "data/varience_comparison_table_blood_cluster.csv")
+colnames(rna_var_diff_genes)[[1]] <- "ensembl_gene_id"
+rna_var_diff_genes_unfiltered <- read_csv(file = "data/varience_comparison_table_blood_cluster_UNFILTERED.csv")
+colnames(rna_var_diff_genes_unfiltered)[[1]] <- "ensembl_gene_id"
+```
+
+## Top freshwater genes with elevated varience by scATAC in scRNA data (their transcription varience difference)
+
+```{r lookup_atac_freshwater_genes_in_rna_table}
+rna_var_diff_genes %>% filter(ensembl_gene_id %in% atac_var_diff_genes$freshwater_genes) -> intersected_freshwater
+intersected_freshwater
+```
+Only p_val < 0.05 from scRNA
+
+
+```{r}
+paste0("Mean f_ratio by scRNA of genes identifyed as more variable in freshwater by scATAC ", mean(intersected_freshwater$f_ratio))
+```
+
+## Top saline genes with elevated varience by scATAC in scRNA data (their transcription varience difference)
+
+```{r lookup_atac_saline_genes_in_rna_table}
+rna_var_diff_genes %>% filter(ensembl_gene_id %in% atac_var_diff_genes$saline_genes) -> intersected_saline
+intersected_saline
+```
+Only p_val < 0.05 from scRNA
+```{r}
+paste0("Mean f_ratio by scRNA of genes identifyed as more variable in saline by scATAC ", mean(intersected_saline$f_ratio))
+```
+
+## Intersecting with unfiltered list of genes from scRNA
+## Top freshwater genes with elevated varience by scATAC in scRNA data (their transcription varience difference)
+
+```{r lookup_atac_freshwater_genes_in_rna_table_unfiltered}
+rna_var_diff_genes_unfiltered %>% filter(ensembl_gene_id %in% atac_var_diff_genes$freshwater_genes) -> intersected_freshwater
+intersected_freshwater
+```
+
+
+## Top saline genes with elevated varience by scATAC in scRNA data (their transcription varience difference)
+
+```{r lookup_atac_saline_genes_in_rna_table_unfiltered}
+rna_var_diff_genes_unfiltered %>% filter(ensembl_gene_id %in% atac_var_diff_genes$saline_genes) -> intersected_saline
+intersected_saline
+```
+
+Low number of genes after the intersection is caused by the analysis on scRNA only using union of top 2000 highly variable genes for each sample and most of the identified genes by scATAC were not included in this top.  
+
+
+
+## Looking at transcription levels of genes identified by scATAC
+
+```{r import_scRNA_final_object}
+load(file = "data/rna.integrated.cluster.blood.RData")
+```
+
+## Sample mean trascription levels for genes identified as ones with elevetaded varience in freshwater by scATAC
+
+```{r atac_list_freshwater_counts}
+# replace mixed IDs with ENSEMBL in the matrix
+mixed_ensembl_table <- read_tsv(file = "data/10X_features.tsv", col_names = c("ensembl", "mixed", "type"))
+atac_genes_transcription_matrix <- rna.integrated.cluster.blood@assays[["RNA"]]@data
+atac_genes_transcription_matrix@Dimnames[[1]] <- mixed_ensembl_table$ensembl
+# subset data matrix from scRNA obj by scATAC indentified genes
+atac_genes_transcription_matrix <- atac_genes_transcription_matrix[atac_var_diff_genes$freshwater_genes,]
+# transpose matrix, convert to tibble
+atac_genes_transcription <- as_tibble(t(as.matrix(atac_genes_transcription_matrix)))
+# add sample column
+atac_genes_transcription$sample <- rna.integrated.cluster.blood@meta.data[["orig.ident"]]
+# get mean by samples
+atac_genes_transcription %>% 
+  group_by(sample) %>% 
+  summarise(across(everything(), list(mean))) %>% 
+  rename_with( ~ gsub("_1", "", .x), starts_with("ENS")) 
+```
+As it can be seen, most of the genes identified by scATAC as having elevated varience have no detecteble transcription level.
+
+
