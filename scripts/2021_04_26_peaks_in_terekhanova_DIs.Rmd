@@ -1,0 +1,157 @@
+---
+title: "Dispersion comparison in Nadezda Terekhanova Divergence Islands (DI) by number of non-zero peaks in the DI "
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+# library(patchwork)
+set.seed(42)
+```
+
+```{r}
+#TODO:
+#  + import DIs 
+#  + convert chromosome numbers to the notation for Stickleback genome  
+#  + convert DIs table to GRanges
+#  + intersect GRanges of the peaks with the DI's GRanges (read GRanges examples in docs https://bioconductor.org/packages/release/bioc/vignettes/GenomicRanges/inst/doc/GenomicRangesIntroduction.html )
+#  + import cell vs peaks matrix
+#  + convert peak names in cell_peaks matrix to GRanges for subsetting StringToGRanges() function
+#  + subset cell vs peaks matrix after normalization with the list of intersection with DIs
+#  + make matrix with DIs annotated with peaks inside them (matrix of num_nonzero_peaks_in_DI vs cells)
+#  + run the matrix through varience difference function
+```
+
+```{r}
+di_table <- read_tsv(file = "data/Terekhanova_DIs.tsv", col_names = c("chr", "start", "end", "type"))
+```
+
+```{r}
+chr_lookup_vector <- c("groupI", "groupII", "groupIII", "groupIV", "groupV", "groupVI", "groupVII", "groupVIII", "groupIX", "groupX",
+                       "groupXI", "groupXII", "groupXIII", "groupXIV", "groupXV", "groupXVI", "groupXVII", "groupXVIII", "groupXIX", "groupXX", "groupXXI")
+di_granges <- GRanges(seqnames = chr_lookup_vector[di_table$chr],
+                      ranges = IRanges(start = di_table$start, end = di_table$end))
+```
+
+
+
+
+```{r}
+## Sample combining was done in a separate .R script for multithreading utilisation
+load(file = "data/scATAC/combined_scATAC_samples_obj.RData")
+
+load(file = "data/scATAC/ga_granges_annotation.RData")
+annotations <- ga_tx_merged
+genome(annotations) <- "gasAcu1"
+
+# add the gene information to the object
+Annotation(combined) <- annotations
+
+
+
+```
+
+
+```{r import_cells_vs_peaks_matrix}
+load(file = "data/scATAC/combined_downsampled_counts_matrix.Rdata") # comb_counts_matrix
+```
+
+```{r}
+combined_peaks_ranges <- StringToGRanges(rownames(comb_counts_matrix), sep = c("-", "-"))
+```
+
+```{r}
+di_overlaps <- findOverlaps(di_granges, combined_peaks_ranges)
+```
+
+
+
+```{r}
+# annotate peaks vs cells matrix with list of overlapping regions with genes
+peaks_in_combined_obj_annotated <- ClosestFeature(
+  object = combined,
+  regions = StringToGRanges(rownames(combined), sep = c("-", "-"))
+)
+
+peaks_overlaping_annotated <- peaks_in_combined_obj_annotated[di_overlaps@to,]
+peaks_overlaping_annotated$DI_id <- di_overlaps@from
+
+# convert all non-zero values to 1
+comb_counts_matrix_binarised <- comb_counts_matrix[comb_counts_matrix@Dimnames[[1]] %in% peaks_overlaping_annotated$query_region,] # all non-zero peaks set to value 1
+comb_counts_matrix_binarised@x <- rep_len(1, length(comb_counts_matrix_binarised@x))
+
+# sum column-wise by gene (resulting with a matrix of num_nonzero_peaks_in_DI vs cells)
+num_nonzero_peaks_in_DI_matrix <- Matrix::Matrix(rowsum(comb_counts_matrix_binarised, peaks_overlaping_annotated$DI_id), sparse = TRUE)
+```
+
+
+
+
+
+
+## Calculating varience difference ratio based on the number of non-zero peaks per DI
+
+```{r}
+num_saline_cells <- sum(table(combined@meta.data[["sample"]])[c("atac1", "atac2")])
+# num_freshwater_cells <- sum(table(combined@meta.data[["sample"]])[c("atac3", "atac4")])
+
+# Sanity check that ordering in the matrix is OK
+l <- num_saline_cells + 1
+r <- num_saline_cells + 6
+if (!all(names(Idents(combined)[l:r]) == names(head(combined@assays[["ATAC"]]@fragments[[3]]@cells)))){
+  stop("sample ordering in the count matrix is wrong")
+}
+
+l_saline = 1
+r_saline = num_saline_cells 
+l_freshwater = num_saline_cells + 1
+r_freshwater = ncol(comb_counts_matrix)
+```
+
+
+```{r calculate_varience_diff_for_number_of_nonzero_peaks_in_DIs_matrix}
+output <- apply(num_nonzero_peaks_in_DI_matrix, 1, function(row){
+  # message(paste0("row = ", row))
+  x <- row[1:r_saline]
+  x <- x[x != 0 & !is.na(x)]
+  y <- row[l_freshwater:r_freshwater]
+  y <- y[y != 0 & !is.na(y)]
+  if(length(x) > 20 & length(y) > 20){
+    saline_var <- var(x)
+    freshwater_var <- var(y)
+    f.test.res <- var.test(x, y)
+    return(data.frame(f_ratio = f.test.res$estimate, p_val = f.test.res$p.value, saline_var = saline_var, freshwater_var = freshwater_var))
+  }else{
+    return(data.frame(f_ratio = NA, p_val = NA, saline_var = NA, freshwater_var = NA))
+  }
+  
+  # return(data.frame(test = sum(row[1:saline_right_boundary]), test.l.1 = length(row[1:saline_right_boundary]), test.l.2 = length(row[freshwater_left_boundary:freshwater_right_boundary])))
+})
+num_nonzero_peaks_in_DIs_varience_table <- do.call(rbind,output)
+# num_nonzero_peaks_in_DIs_varience_table_filtered_downsampled <- filter(num_nonzero_peaks_in_DIs_varience_table,  p_val < 0.05 & f_ratio > 0 & f_ratio != Inf & p_val != 0)
+num_nonzero_peaks_in_DIs_varience_table %>% 
+  dplyr::filter(p_val < 0.05 & f_ratio > 0 & f_ratio != Inf & p_val != 0) %>% 
+  rownames_to_column(var = "DI_id") -> num_nonzero_peaks_in_DIs_varience_table_filtered_downsampled
+num_nonzero_peaks_in_DIs_varience_table_filtered_downsampled <- cbind(num_nonzero_peaks_in_DIs_varience_table_filtered_downsampled, di_table[as.integer(num_nonzero_peaks_in_DIs_varience_table_filtered_downsampled$DI_id),])
+```
+
+```{r}
+num_nonzero_peaks_in_DIs_varience_table_filtered_downsampled
+```
+
+
+```{r}
+write_csv(num_nonzero_peaks_in_DIs_varience_table_filtered_downsampled, file = "data/scATAC/saline_vs_freshwater_varience_table_on_balanced_matrix_with_number_of_peaks_per_DI_filtered.csv")
+```
+
+```{r}
+paste0("AFTER downsampling, mean varience difference ratio based on number of nonzero peaks per DI: ", mean(num_nonzero_peaks_in_DIs_varience_table_filtered_downsampled$f_ratio)) 
+```
