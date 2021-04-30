@@ -1,5 +1,5 @@
 ---
-title: "Dispersion comparison in Nadezda Terekhanova Divergence Islands (DI) by number of non-zero peaks in the DI "
+title: "Varience comparison in Nadezda Terekhanova Divergence Islands (DI) by number of non-zero peaks in the DI "
 output: html_notebook
 ---
 
