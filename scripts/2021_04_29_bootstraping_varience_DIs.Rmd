@@ -171,14 +171,16 @@ bootstraps_combined$DI_id <- factor(bootstraps_combined$DI_id, levels = c("1", "
 ```
 
 ```{r }
+pdf(file = "plots/scATAC/varience_bootstraping_DIs.pdf")
 bootstraps_combined %>% 
   ggplot(aes(x = DI_id, y = f_ratio)) +
   geom_boxplot() +
   coord_cartesian(ylim = c(0,2.75)) +
   geom_hline(yintercept = 1, linetype = "dashed", color = "dark grey") +
   labs(title = "Varience ratio between cells in saline and freshwater in divergence islands") +
-  ylab("varience ratio") +
-  xlab("Divergence Island ID")
+  ylab("varience ratio (bootstraping)") +
+  xlab("Divergence Island ID") %>% print()
+dev.off()
 ```
 
 
