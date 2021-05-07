@@ -63,6 +63,8 @@ Annotation(combined) <- annotations
 
 ```{r import_cells_vs_peaks_matrix}
 load(file = "data/scATAC/combined_downsampled_counts_matrix.Rdata") # comb_counts_matrix
+# Matrix::writeMM(obj = comb_counts_matrix, file = "data/scATAC/cells_peaks_matrix_after_balancing_counts_by_watertype.mtx")
+write.csv(as.data.frame(comb_counts_matrix), file = "data/scATAC/cells_peaks_matrix_after_balancing_counts_by_watertype.csv")
 ```
 
 

@@ -9,7 +9,7 @@ setwd("/home/tema/work/skolkovo/fish_project/")
 
 message("Loading Seurat object")
 load(file = "data/scATAC/atac1_obj_qc_clusters.RData")
-message("Calculating RNA activity atac3")
+message("Calculating RNA activity atac1")
 atac1[["RNA"]] <- CreateAssayObject(counts = GeneActivity(atac1))
 atac1 <- NormalizeData(
     object = atac1,
@@ -22,7 +22,7 @@ saveRDS(atac1, file = "data/scATAC/atac1_obj_qc_clusters_calculated_RNA.rds")
 message("Loading Seurat object")
 load(file = "data/scATAC/atac2_heavy_filtering_obj_qc_clusters.RData")
 plan("multiprocess", workers = 11)
-message("Calculating RNA activity")
+message("Calculating RNA activity atac2")
 atac2_heavy_filtering[["RNA"]] <- CreateAssayObject(counts = GeneActivity(atac2_heavy_filtering))
 atac2_heavy_filtering <- NormalizeData(
     object = atac2_heavy_filtering,

@@ -1,0 +1,153 @@
+---
+title: "scATAC data reanalysis of blood clusters"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(patchwork)
+set.seed(42)
+```
+
+```{r}
+hem_contaning_genes <- c("ENSGACG00000013918", "ENSGACG00000013895", "ENSGACG00000014492", "ENSGACG00000008921")
+hemoglobin_related_genes <- c("HBE1", "snx3", "cpox")
+```
+
+```{r}
+# load(file = "data/scATAC/atac1_obj_qc_clusters.RData")
+# load( file = "data/scATAC/atac2_heavy_filtering_obj_qc_clusters.RData")
+# load( file = "data/scATAC/atac3_obj_qc_clusters.RData")
+# load( file = "data/scATAC/atac4_heavy_filtering_obj_qc_clusters.RData")
+```
+
+
+```{r}
+# DONE for each sample in a separate .R script for parallelization
+
+# atac1[['RNA']] <- CreateAssayObject(counts = GeneActivity(atac1))
+# atac1 <- NormalizeData(
+#   object = atac1,
+#   assay = 'RNA',
+#   normalization.method = 'LogNormalize',
+#   scale.factor = median(atac1$nCount_RNA)
+# )
+# write_rds(atac1, file = "data/scATAC/atac1_obj_qc_clusters_imputed_RNA.rds")
+```
+
+
+
+```{r}
+plot_gene_distribution <- function(sample_name, sample_obj){
+  query_genes <- c("HBE1", "snx3", "cpox", "ACTB")
+
+  dim_plot <- DimPlot(sample_obj, label = TRUE, combine = TRUE)[[1]] + NoLegend() + labs(title = paste0(sample_name, " clustering"))
+  feature_plot <- FeaturePlot(
+    object = sample_obj,
+    features = query_genes,
+    pt.size = 0.1,
+    max.cutoff = 'q95',
+    ncol = 3
+  )
+  
+  vln_plot <- VlnPlot(object = sample_obj,
+    features = query_genes, 
+    assay = "RNA", 
+    same.y.lims = TRUE
+    ) 
+  
+  coverage_plot <- CoveragePlot(
+    object = sample_obj,
+    region = "groupXI:13662623-13663375",
+    annotation = FALSE,
+    peaks = FALSE,
+    sep = c(":", "-"),
+  )
+  
+  wrap_plots(dim_plot,
+             feature_plot[[1]],
+             feature_plot[[3]],
+             feature_plot[[4]] + labs(title = "ACTB as control"),
+             vln_plot[[1]],
+             vln_plot[[2]],
+             vln_plot[[3]],
+             vln_plot[[4]] + labs(title = "ACTB as control"),
+             coverage_plot + labs(title = "HBE1 peaks"),
+             ncol = 3)
+
+}
+```
+
+
+## saline_1 sample hemoglobin related genes distribution
+
+Values for gene expression were imputed from the scATAC-seq data. 
+
+```{r fig.width=15, fig.height=15}
+atac1 <- readRDS(file = "data/scATAC/atac1_obj_qc_clusters_calculated_RNA.rds")
+suppressWarnings(plot_gene_distribution(sample_name = "saline_1", sample_obj = atac1))
+```
+
+## saline_2 sample hemoglobin related genes distribution
+
+```{r fig.width=18, fig.height=15}
+atac2 <- readRDS(file = "data/scATAC/atac2_obj_qc_clusters_calculated_RNA.rds")
+suppressWarnings(plot_gene_distribution(sample_name = "saline_2", sample_obj = atac2))
+```
+
+## freshwater_1 sample hemoglobin related genes distribution
+
+```{r fig.width=18, fig.height=15}
+atac3 <- readRDS(file = "data/scATAC/atac3_obj_qc_clusters_calculated_RNA.rds")
+suppressWarnings(plot_gene_distribution(sample_name = "freshwater_3", sample_obj = atac3))
+```
+
+## freshwater_2 sample hemoglobin related genes distribution
+
+```{r fig.width=18, fig.height=15}
+atac4 <- readRDS(file = "data/scATAC/atac4_obj_qc_clusters_calculated_RNA.rds")
+suppressWarnings(plot_gene_distribution(sample_name = "freshwater_4", sample_obj = atac4))
+```
+
+
+```{r}
+# CoveragePlot(
+#   object = atac2_heavy_filtering,
+#   region = "groupXI:13642596-13660115",
+#   annotation = FALSE,
+#   peaks = FALSE,
+#   sep = c(":", "-"),
+# )
+```
+
+```{r fig.width=12}
+# query = c("HBE1", "snx3", "cpox", "ACTB")
+# obj = atac4
+# FeaturePlot(
+#   object = obj,
+#   features = query,
+#   pt.size = 0.1,
+#   max.cutoff = 'q95',
+#   ncol = 3
+# )
+# VlnPlot(  object = obj,
+#   features = query,
+#   assay = "RNA",
+#   adjust = 1)
+```
+
+
+
+
+
+
+
+
