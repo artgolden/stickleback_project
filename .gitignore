@@ -11,4 +11,5 @@ plots/*
 *.RData
 *.rds
 *.nb.html
+*.pdf
 
