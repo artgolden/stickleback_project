@@ -1,0 +1,387 @@
+---
+title: "scATAC data reanalysis of non-blood clusters"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(patchwork)
+source("scripts/stickleback_to_zebrafish_IDs.R")
+library(clusterProfiler)
+set.seed(42)
+```
+
+```{r}
+# TODO: 
+# + get a list of non-blood cells across all samples
+# + redo differential variance calculation with two methods
+#   + peak's height (i.e. "height")
+#   + number non-zero peaks per gene (i.e. "binarized")
+# + redo GO terms analysis
+#   + subset input tables to non-blood
+# + redo DI analysis, 
+#   + adjust cell subsampling to account for non-blood subsetting
+```
+
+```{r import_sample_objs}
+atac1 <- readRDS(file = "data/scATAC/atac1_obj_qc_clusters_calculated_RNA.rds")
+atac2 <- readRDS(file = "data/scATAC/atac2_obj_qc_clusters_calculated_RNA.rds")
+atac3 <- readRDS(file = "data/scATAC/atac3_obj_qc_clusters_calculated_RNA.rds")
+atac4 <- readRDS(file = "data/scATAC/atac4_obj_qc_clusters_calculated_RNA.rds")
+```
+
+```{r subset_to_blood_clusters}
+atac1_non_blood <- subset(atac1, idents = c(2,3,4,6,7,8,9,10,11,12,13))
+atac2_non_blood <- subset(atac2, idents = c(2,3,4,5,6))
+atac3_non_blood <- subset(atac3, idents = c(1,2,3))
+atac4_non_blood <- subset(atac4, idents = c(1,2,3))
+rm(atac1)
+rm(atac2)
+rm(atac3)
+rm(atac4)
+```
+
+```{r}
+non_blood_cells <- c(paste0("atac1_", Cells(atac1_non_blood)),
+                 paste0("atac2_", Cells(atac2_non_blood)),
+                 paste0("atac3_", Cells(atac3_non_blood)),
+                 paste0("atac4_", Cells(atac4_non_blood))
+                 )
+```
+
+```{r subseting_combined_obj}
+
+## Sample combining was done in a separate .R script for multithreading utilisation
+load(file = "data/scATAC/combined_scATAC_samples_obj.RData")
+
+combined_non_blood <- subset(combined, cells = non_blood_cells)
+
+saline_length <- table(combined_non_blood@meta.data[["sample"]])[["atac1"]] + table(combined_non_blood@meta.data[["sample"]])[["atac2"]]
+combined_saline_counts <- combined_non_blood@assays[["ATAC"]]@counts[,1:saline_length]
+
+# DimPlot(combined,  label = TRUE) + NoLegend()
+# DimPlot(combined_non_blood,  label = TRUE) + NoLegend()
+```
+
+```{r test_coverage_diff_in_orig_combined_counts_matrix_excluding_blood}
+counts_per_cell <- colSums(combined_non_blood@assays[["ATAC"]]@counts)
+mean_saline_counts_per_cell <- mean(counts_per_cell[1:saline_length])
+mean_freshwater_counts_per_cell <- mean(counts_per_cell[-(1:saline_length)])
+coverage_imbalance_ratio <- mean_freshwater_counts_per_cell/mean_saline_counts_per_cell
+```
+
+```{r downsampling_of_saline_by_the_ratio_from_count_matrix_excluding_blood}
+#trying more memory efficient method by working directly on the internal vectors of the dgCMatrix
+require(scuttle)
+combined_saline_counts <- combined_non_blood@assays[["ATAC"]]@counts[,1:saline_length]
+combined_saline_downsampled <- downsampleMatrix(combined_saline_counts, prop = coverage_imbalance_ratio, bycol=TRUE)
+
+comb_counts_matrix <- cbind(
+  combined_saline_downsampled,
+  combined_non_blood@assays[["ATAC"]]@counts[,-(1:saline_length)]
+)
+saveRDS(comb_counts_matrix, file = "data/scATAC/combined_non_blood_downsampled_counts_matrix.rds")
+```
+
+```{r test_if_downsampling_worked_excluding_blood}
+counts_per_cell <- colSums(comb_counts_matrix)
+saline_length <- table(combined_non_blood@meta.data[["sample"]])[["atac1"]] + table(combined_non_blood@meta.data[["sample"]])[["atac2"]]
+mean_saline_counts_per_cell_downsampled <- mean(counts_per_cell[1:saline_length])
+mean_freshwater_counts_per_cell <- mean(counts_per_cell[-(1:saline_length)])
+```
+
+```{r}
+load(file = "data/scATAC/ga_granges_annotation.RData")
+annotations <- ga_tx_merged
+genome(annotations) <- "gasAcu1"
+
+# add the gene information to the object
+Annotation(combined_non_blood) <- annotations
+```
+
+
+```{r var_calculation_peaks_height_excluding_blood}
+#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+#@  peak's height variance re-calculated, with balancing counts coverage
+#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+num_saline_cells <- sum(table(combined_non_blood@meta.data[["sample"]])[c("atac1", "atac2")])
+
+# Sanity check that ordering in the matrix is OK
+l <- num_saline_cells + 1
+r <- num_saline_cells + 6
+if (!all(names(Idents(combined_non_blood)[l:r]) == names(head(combined_non_blood@assays[["ATAC"]]@fragments[[3]]@cells)))){
+  stop("sample ordering in the count matrix is wrong")
+}
+
+l_saline = 1
+r_saline = num_saline_cells 
+l_freshwater = num_saline_cells + 1
+r_freshwater = ncol(comb_counts_matrix)
+
+
+output <- apply(comb_counts_matrix, 1, function(row){
+  # message(paste0("row = ", row))
+  x <- row[1:r_saline]
+  x <- x[x != 0 & !is.na(x)]
+  y <- row[l_freshwater:r_freshwater]
+  y <- y[y != 0 & !is.na(y)]
+  if(length(x) > 20 & length(y) > 20){
+    saline_var <- var(x)
+    freshwater_var <- var(y)
+    f.test.res <- var.test(x, y)
+    return(data.frame(f_ratio = f.test.res$estimate, p_val = f.test.res$p.value, saline_var = saline_var, freshwater_var = freshwater_var))
+  }else{
+    return(data.frame(f_ratio = NA, p_val = NA, saline_var = NA, freshwater_var = NA))
+  }
+  
+  # return(data.frame(test = sum(row[1:saline_right_boundary]), test.l.1 = length(row[1:saline_right_boundary]), test.l.2 = length(row[freshwater_left_boundary:freshwater_right_boundary])))
+})
+saline_vs_freshwater_varience_table <- do.call(rbind,output)
+saline_vs_freshwater_varience_table %>% 
+  dplyr::filter(p_val < 0.05 & f_ratio > 0 & f_ratio != Inf & p_val != 0) %>% 
+  rownames_to_column(var = "peak") -> saline_vs_freshwater_varience_table_filtered_downsampled
+
+
+# annotate peaks vs cells matrix with genes
+peaks_in_combined_obj_annotated <- ClosestFeature(
+  object = combined_non_blood,
+  regions = StringToGRanges(rownames(combined_non_blood), sep = c("-", "-"))
+)
+
+saline_vs_freshwater_varience_table_filtered_downsampled_annotated <- inner_join(saline_vs_freshwater_varience_table_filtered_downsampled, peaks_in_combined_obj_annotated, by = c("peak" = "query_region"))
+
+write_csv(saline_vs_freshwater_varience_table_filtered_downsampled_annotated, file = "data/scATAC/saline_vs_freshwater_NON_BLOOD_varience_table_on_balanced_matrix_based_on_peaks_height_filtered.csv")
+```
+
+```{r rmean_s_f_after_downsampling}
+# paste0("AFTER downsampling, mean varience difference ratio: ", mean(saline_vs_freshwater_varience_table_filtered_downsampled$f_ratio))
+```
+
+
+```{r var_calculation_number_non_zero_peaks_per_gene_excluding_blood}
+#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+#@  number non-zero peaks per gene variance re-calculated, with balancing counts coverage
+#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+
+
+
+# annotate peaks vs cells matrix with genes
+peaks_in_combined_obj_annotated <- ClosestFeature(
+  object = combined_non_blood,
+  regions = StringToGRanges(rownames(combined_non_blood), sep = c("-", "-"))
+)
+
+# convert all non-zero values to 1
+comb_counts_matrix_binarised <- comb_counts_matrix # all non-zero peaks set to value 1
+comb_counts_matrix_binarised@x <- rep_len(1, length(comb_counts_matrix_binarised@x))
+
+# sum column-wise by gene (resulting with a matrix of num_nonzero_peaks_in_gene vs cells)
+num_nonzero_peaks_in_genes_matrix <- Matrix::Matrix(rowsum(comb_counts_matrix_binarised, peaks_in_combined_obj_annotated$gene_id), sparse = TRUE)
+
+
+output <- apply(num_nonzero_peaks_in_genes_matrix, 1, function(row){
+  # message(paste0("row = ", row))
+  x <- row[1:r_saline]
+  x <- x[x != 0 & !is.na(x)]
+  y <- row[l_freshwater:r_freshwater]
+  y <- y[y != 0 & !is.na(y)]
+  if(length(x) > 20 & length(y) > 20){
+    saline_var <- var(x)
+    freshwater_var <- var(y)
+    f.test.res <- var.test(x, y)
+    return(data.frame(f_ratio = f.test.res$estimate, p_val = f.test.res$p.value, saline_var = saline_var, freshwater_var = freshwater_var))
+  }else{
+    return(data.frame(f_ratio = NA, p_val = NA, saline_var = NA, freshwater_var = NA))
+  }
+  
+  # return(data.frame(test = sum(row[1:saline_right_boundary]), test.l.1 = length(row[1:saline_right_boundary]), test.l.2 = length(row[freshwater_left_boundary:freshwater_right_boundary])))
+})
+num_nonzero_peaks_in_genes_varience_table <- do.call(rbind,output)
+# num_nonzero_peaks_in_genes_varience_table_filtered_downsampled <- filter(num_nonzero_peaks_in_genes_varience_table,  p_val < 0.05 & f_ratio > 0 & f_ratio != Inf & p_val != 0)
+num_nonzero_peaks_in_genes_varience_table %>% 
+  dplyr::filter(p_val < 0.05 & f_ratio > 0 & f_ratio != Inf & p_val != 0) %>% 
+  rownames_to_column(var = "gene") -> num_nonzero_peaks_in_genes_varience_table_filtered_downsampled
+
+write_csv(num_nonzero_peaks_in_genes_varience_table_filtered_downsampled, file = "data/scATAC/saline_vs_freshwater_NON_BLOOD_varience_table_on_balanced_matrix_with_number_of_peaks_per_gene_filtered.csv")
+```
+
+```{r}
+# paste0("AFTER downsampling, mean varience difference ratio based on number of nonzero peaks per gene: ", mean(num_nonzero_peaks_in_genes_varience_table_filtered_downsampled$f_ratio))
+```
+
+```{r GO_reanalysis}
+#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+#@                      GO re-analysis
+#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+
+var_table_peaks_binarized <- read_csv(file = "data/scATAC/saline_vs_freshwater_NON_BLOOD_varience_table_on_balanced_matrix_with_number_of_peaks_per_gene_filtered.csv")
+var_table_peaks_height <- read_csv(file = "data/scATAC/saline_vs_freshwater_NON_BLOOD_varience_table_on_balanced_matrix_based_on_peaks_height_filtered.csv")
+
+conversion_table <- read.table(file = "data/stickleback_zebrafish_orthologs.tsv", sep = "\t", header = TRUE)
+var_table_peaks_binarized <- arrange(var_table_peaks_binarized, -f_ratio)
+var_table_peaks_height <- arrange(var_table_peaks_height, -f_ratio)
+
+freshwater_top_threshold <- 2.7
+# choosing arbitrarily to include peaks and genes with high varience difference (f_ratio) > 2, more varience in freshwater
+var_table_peaks_binarized %>% filter(f_ratio > freshwater_top_threshold) -> top_binarized
+var_table_peaks_height %>% filter(f_ratio > freshwater_top_threshold) -> top_height
+top_genes_freshwater <- stickleback_to_zebrafish_IDs(intersect(top_binarized$gene, top_height$gene_id), conversion_table)
+
+saline_top_threshold <- 0.5
+var_table_peaks_binarized %>% filter(f_ratio < saline_top_threshold) -> bottom_binarized
+var_table_peaks_height %>% filter(f_ratio < saline_top_threshold) -> bottom_height
+top_genes_saline <- stickleback_to_zebrafish_IDs(intersect(bottom_binarized$gene, bottom_height$gene_id), conversion_table)
+
+list(freshwater_genes = intersect(top_binarized$gene, top_height$gene_id),
+       saline_genes = intersect(bottom_binarized$gene, bottom_height$gene_id)) %>% 
+  saveRDS(file = "data/scATAC/atac_NON_BLOOD_var_diff_genes.rds")
+
+
+GO_p_value_threshold <- 0.2
+freshwater_top_GO <- enrichGO(gene = top_genes_freshwater,
+                OrgDb         = "org.Dr.eg.db",
+                keyType       = 'ENSEMBL',
+                pAdjustMethod = "BH",
+                pvalueCutoff = GO_p_value_threshold,
+                qvalueCutoff=1)
+
+saline_top_GO <- enrichGO(gene = top_genes_saline,
+                OrgDb         = "org.Dr.eg.db",
+                keyType       = 'ENSEMBL',
+                pAdjustMethod = "BH",
+                pvalueCutoff = GO_p_value_threshold,
+                qvalueCutoff=1)
+```
+
+### adjusted p-value threshold had to be dropped to p-adj < `r GO_p_value_threshold`. 
+
+```{r GO_enrichment_plot_saline, fig.width=14, fig.height=11}
+require(enrichplot)
+dotplot(saline_top_GO, showCategory = 30,
+        title = "top 30 GO terms, saline_non_blood_top_GO")
+
+```
+
+```{r GO_enrichment_plot_freshwater, fig.width=15, fig.height=10}
+dotplot(freshwater_top_GO, showCategory = 30,
+        title = "top 30 GO terms, freshwater_non_blood_top_GO")
+```
+
+```{r}
+#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+#@          DI regions re-analysis with bootstraping
+#@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+di_table <- read_tsv(file = "data/Terekhanova_DIs.tsv", col_names = c("chr", "start", "end", "type"))
+chr_lookup_vector <- c("groupI", "groupII", "groupIII", "groupIV", "groupV", "groupVI", "groupVII", "groupVIII", "groupIX", "groupX",
+                       "groupXI", "groupXII", "groupXIII", "groupXIV", "groupXV", "groupXVI", "groupXVII", "groupXVIII", "groupXIX", "groupXX", "groupXXI")
+di_granges <- GRanges(seqnames = chr_lookup_vector[di_table$chr],
+                      ranges = IRanges(start = di_table$start, end = di_table$end))
+
+
+combined_peaks_ranges <- StringToGRanges(rownames(comb_counts_matrix), sep = c("-", "-"))
+di_overlaps <- findOverlaps(di_granges, combined_peaks_ranges)
+# annotate peaks vs cells matrix with list of overlapping regions with genes
+peaks_in_combined_obj_annotated <- ClosestFeature(
+  object = combined_non_blood,
+  regions = StringToGRanges(rownames(combined_non_blood), sep = c("-", "-"))
+)
+
+peaks_overlaping_annotated <- peaks_in_combined_obj_annotated[di_overlaps@to,]
+peaks_overlaping_annotated$DI_id <- di_overlaps@from
+
+num_saline_cells <- sum(table(combined_non_blood@meta.data[["sample"]])[c("atac1", "atac2")]) # This will no longer work, since we are subsampling both saline and freshwater
+# num_freshwater_cells <- sum(table(combined@meta.data[["sample"]])[c("atac3", "atac4")])
+
+# Sanity check that ordering in the matrix is OK
+l <- num_saline_cells + 1
+r <- num_saline_cells + 6
+if (!all(names(Idents(combined_non_blood)[l:r]) == names(head(combined_non_blood@assays[["ATAC"]]@fragments[[3]]@cells)))){
+  stop("sample ordering in the count matrix is wrong")
+}
+
+l_sal = 1
+r_sal = num_saline_cells 
+l_fresh = num_saline_cells + 1
+r_fresh = ncol(comb_counts_matrix)
+
+# convert all non-zero values to 1
+comb_counts_matrix_binarised <- comb_counts_matrix[comb_counts_matrix@Dimnames[[1]] %in% peaks_overlaping_annotated$query_region,] # all non-zero peaks set to value 1
+comb_counts_matrix_binarised@x <- rep_len(1, length(comb_counts_matrix_binarised@x))
+
+# sum column-wise by gene (resulting with a matrix of num_nonzero_peaks_in_DI vs cells)
+num_nonzero_peaks_in_DI_matrix <- Matrix::Matrix(rowsum(comb_counts_matrix_binarised, peaks_overlaping_annotated$DI_id), sparse = TRUE)
+
+
+
+# Do subsampling of cells in saline and freshwater
+num_cells_to_leave <- 1500
+
+# saline and freshwater cell boundaries in the matrix recalculated after subsampling
+l_saline = 1
+r_saline = num_cells_to_leave
+l_freshwater = num_cells_to_leave + 1
+r_freshwater = num_cells_to_leave * 2
+
+
+bootstrap_tables <- vector("list", length(num_cells_to_leave * 2))
+for (i in 1:1000) {
+  saline_cells_to_leave <- sort(sample(l_sal:r_sal, num_cells_to_leave, replace = FALSE))
+  freshwater_cells_to_leave <- sort(sample(l_fresh:r_fresh, num_cells_to_leave, replace = FALSE))
+  cells_to_leave <- c(saline_cells_to_leave, freshwater_cells_to_leave)
+  num_nonzero_peaks_in_DI_matrix_subsampled <- num_nonzero_peaks_in_DI_matrix[,cells_to_leave]
+
+  output <- apply(num_nonzero_peaks_in_DI_matrix_subsampled, 1, function(row){
+    # message(paste0("row = ", row))
+    x <- row[1:r_saline]
+    x <- x[x != 0 & !is.na(x)]
+    y <- row[l_freshwater:r_freshwater]
+    y <- y[y != 0 & !is.na(y)]
+    if(length(x) > 20 & length(y) > 20){
+      saline_var <- var(x)
+      freshwater_var <- var(y)
+      f.test.res <- var.test(x, y)
+      return(data.frame(f_ratio = f.test.res$estimate, p_val = f.test.res$p.value, saline_var = saline_var, freshwater_var = freshwater_var))
+    }else{
+      return(data.frame(f_ratio = NA, p_val = NA, saline_var = NA, freshwater_var = NA))
+    }
+  })
+  num_nonzero_peaks_in_DIs_varience_table <- do.call(rbind,output)
+  
+  num_nonzero_peaks_in_DIs_varience_table %>% 
+    dplyr::filter(p_val < 0.05 & f_ratio > 0 & f_ratio != Inf & p_val != 0) %>%
+    rownames_to_column(var = "DI_id") -> num_nonzero_peaks_in_DIs_varience_table_filtered_downsampled
+  num_nonzero_peaks_in_DIs_varience_table_filtered_downsampled <- cbind(num_nonzero_peaks_in_DIs_varience_table_filtered_downsampled,
+                                                                        di_table[as.integer(num_nonzero_peaks_in_DIs_varience_table_filtered_downsampled$DI_id),])
+  num_nonzero_peaks_in_DIs_varience_table_filtered_downsampled$iteration <- i
+  bootstrap_tables[[i]] <-num_nonzero_peaks_in_DIs_varience_table_filtered_downsampled
+}
+
+
+#elegant way of combining a list of tibbles
+bootstraps_combined <- bind_rows(bootstrap_tables)
+bootstraps_combined$DI_id <- factor(bootstraps_combined$DI_id, levels = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10",
+                                                                          "11", "12", "13", "14", "15", "16", "17", "18", "19"))
+```
+
+```{r fig.width=8}
+bootstraps_combined %>% 
+  ggplot(aes(x = DI_id, y = f_ratio)) +
+  geom_boxplot() +
+  coord_cartesian(ylim = c(0,7)) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "dark grey") +
+  labs(title = "Varience ratio between cells in saline and freshwater in divergence islands (non-blood only)") +
+  ylab("varience ratio (bootstraping)") +
+  xlab("Divergence Island ID")
+```
+
+
+
