@@ -1,0 +1,104 @@
+---
+title: "scATAC data Na/K ATPase related genes distribution"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(patchwork)
+set.seed(42)
+```
+
+
+
+```{r fig.width=15, fig.height=15}
+atac1 <- readRDS(file = "data/scATAC/atac1_obj_qc_clusters_calculated_RNA.rds")
+# suppressWarnings(plot_gene_distribution(sample_name = "saline_1", sample_obj = atac1))
+```
+
+
+```{r}
+unique(atac1@assays[["peaks"]]@annotation@elementMetadata@listData[["gene_name"]][atac1@assays[["peaks"]]@annotation@elementMetadata@listData[["gene_id"]] == "ENSGACG00000005700"])
+unique(atac1@assays[["peaks"]]@annotation@elementMetadata@listData[["gene_name"]][atac1@assays[["peaks"]]@annotation@elementMetadata@listData[["gene_id"]] == "ENSGACG00000017418"])
+```
+
+```{r}
+unique(atac1@assays[["peaks"]]@annotation@elementMetadata@listData[["gene_name"]][
+  grep("^atp1b",atac1@assays[["peaks"]]@annotation@elementMetadata@listData[["gene_name"]])])
+unique(atac1@assays[["peaks"]]@annotation@elementMetadata@listData[["gene_name"]][
+  grep("^atp1a",atac1@assays[["peaks"]]@annotation@elementMetadata@listData[["gene_name"]])])
+```
+
+
+```{r fig.width=15, fig.height=15}
+VlnPlot(object = atac1,
+  features = c("atp1b4", "atp1b1a", "atp1b1b", "atp1b3a", "atp1b2b", "atp1a1a.2", "atp1a2a"  ), 
+  assay = "RNA", 
+  same.y.lims = TRUE
+  ) + DimPlot(atac1, label = TRUE) + 
+  VlnPlot(object = atac1,
+  features = c("HBE1"), 
+  assay = "RNA", 
+  same.y.lims = TRUE
+  )[[1]] + labs(title = "HBE1 as marker of blood")
+```
+
+```{r fig.width=15, fig.height=15}
+pdf(file = "plots/scATAC/Na_K_ATPase_genes_distribution.pdf", width = 15, height = 15)
+suppressWarnings(VlnPlot(object = atac1,
+  features = c("atp1b4", "atp1b1a", "atp1b1b", "atp1b3a", "atp1b2b", "atp1a1a.2", "atp1a2a"  ), 
+  assay = "RNA", 
+  same.y.lims = TRUE
+  ) + DimPlot(atac1, label = TRUE) + 
+  VlnPlot(object = atac1,
+  features = c("HBE1"), 
+  assay = "RNA", 
+  same.y.lims = TRUE
+  )[[1]] + labs(title = "HBE1 as marker of blood"))
+dev.off()
+```
+
+```{r}
+atac2 <- readRDS(file = "data/scATAC/atac2_obj_qc_clusters_calculated_RNA.rds")
+```
+
+
+```{r fig.width=12, fig.height=12}
+VlnPlot(object = atac2,
+  features = c("atp1b4", "atp1b1a", "atp1b1b", "atp1b3a", "atp1b2b", "atp1a1a.2", "atp1a2a"  ), 
+  assay = "RNA", 
+  same.y.lims = TRUE
+  ) + DimPlot(atac2, label = TRUE) + 
+  VlnPlot(object = atac2,
+  features = c("HBE1"), 
+  assay = "RNA", 
+  same.y.lims = TRUE
+  )[[1]] + labs(title = "HBE1 as marker of blood")
+```
+
+
+```{r}
+atac4 <- readRDS(file = "data/scATAC/atac4_obj_qc_clusters_calculated_RNA.rds")
+```
+
+
+```{r fig.width=12, fig.height=12}
+VlnPlot(object = atac4,
+  features = c("atp1b4", "atp1b1a", "atp1b1b", "atp1b3a", "atp1b2b", "atp1a1a.2", "atp1a2a"  ), 
+  assay = "RNA", 
+  same.y.lims = TRUE
+  ) + DimPlot(atac4, label = TRUE) + 
+  VlnPlot(object = atac4,
+  features = c("HBE1"), 
+  assay = "RNA", 
+  same.y.lims = TRUE
+  )[[1]] + labs(title = "HBE1 as marker of blood")
+```
