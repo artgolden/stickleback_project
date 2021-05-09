@@ -1,5 +1,5 @@
 ---
-title: "scATAC data reanalysis of blood clusters"
+title: "scATAC data hemoglobin related genes distribution"
 output: html_notebook
 ---
 
@@ -143,7 +143,6 @@ suppressWarnings(plot_gene_distribution(sample_name = "freshwater_4", sample_obj
 #   assay = "RNA",
 #   adjust = 1)
 ```
-
 
 
 
