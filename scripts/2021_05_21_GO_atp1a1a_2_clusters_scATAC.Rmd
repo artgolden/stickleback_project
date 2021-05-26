@@ -1,0 +1,160 @@
+---
+title: "scATAC data GO terms for atp1a1a.2 expressing clusters"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(patchwork)
+source("scripts/stickleback_to_zebrafish_IDs.R")
+set.seed(42)
+```
+
+```{r}
+# TODO:
+# + identify differentially accessible peaks:
+#   + clusters 7,13 combined vs all
+#   + clusters 7,13 each vs all
+# + annotate resulting DA peaks with closest genes
+# + generate zebrafish orthologs from annotation
+# + GO analysis on 3 sets of orthlog genes
+```
+
+
+```{r fig.width=15, fig.height=15}
+atac1 <- readRDS(file = "data/scATAC/atac1_obj_qc_clusters_calculated_RNA.rds")
+# suppressWarnings(plot_gene_distribution(sample_name = "saline_1", sample_obj = atac1))
+```
+
+```{r}
+# change back to working with peaks instead of gene activities
+DefaultAssay(atac1) <- 'peaks'
+
+clust_7_13_vs_rest <- FindMarkers(
+  object = atac1,
+  ident.1 = c("7","13"),
+  ident.2 = levels(x = atac1)[-c(8,14)],
+  min.pct = 0.2,
+  test.use = 'LR',
+  latent.vars = 'peak_region_fragments'
+)
+
+
+clust_7_vs_rest <- FindMarkers(
+  object = atac1,
+  ident.1 = c("7"),
+  ident.2 = levels(x = atac1)[-c(8)],
+  min.pct = 0.2,
+  test.use = 'LR',
+  latent.vars = 'peak_region_fragments'
+)
+
+clust_13_vs_rest <- FindMarkers(
+  object = atac1,
+  ident.1 = c("13"),
+  ident.2 = levels(x = atac1)[-c(14)],
+  min.pct = 0.2,
+  test.use = 'LR',
+  latent.vars = 'peak_region_fragments'
+)
+# head(da_peaks)
+```
+
+
+
+```{r}
+clust_7_13_vs_rest <- rownames_to_column(clust_7_13_vs_rest, var = "region")
+clust_7_vs_rest <- rownames_to_column(clust_7_vs_rest, var = "region")
+clust_13_vs_rest <- rownames_to_column(clust_13_vs_rest, var = "region")
+```
+
+
+```{r}
+closest_genes_7_13_vs_rest <- ClosestFeature(atac1, regions = clust_7_13_vs_rest$region)
+closest_genes_7_13_vs_rest <- merge(closest_genes_7_13_vs_rest, clust_7_13_vs_rest, by.x = "query_region", by.y = "region")
+closest_genes_7_vs_rest <- ClosestFeature(atac1, regions = clust_7_vs_rest$region)
+closest_genes_7_vs_rest <- merge(closest_genes_7_vs_rest, clust_7_vs_rest, by.x = "query_region", by.y = "region")
+closest_genes_13_vs_rest <- ClosestFeature(atac1, regions = clust_13_vs_rest$region)
+closest_genes_13_vs_rest <- merge(closest_genes_13_vs_rest, clust_13_vs_rest, by.x = "query_region", by.y = "region")
+```
+
+```{r}
+require(clusterProfiler)
+conversion_table <- read.table(file = "data/stickleback_zebrafish_orthologs.tsv", sep = "\t", header = TRUE)
+
+GO_p_value_threshold <- 0.05
+log_FC_threshold <- 1
+p_val_adj_threshold <- 0.01
+
+closest_genes_7_13_vs_rest %>% 
+  as_tibble() %>%
+  dplyr::filter(p_val_adj < p_val_adj_threshold, avg_log2FC > log_FC_threshold) ->
+   for_GO_7_13 
+GO_7_13_vs_rest <- enrichGO(gene = stickleback_to_zebrafish_IDs(unique(for_GO_7_13$gene_id), conversion_table = conversion_table),
+                OrgDb         = "org.Dr.eg.db",
+                keyType       = 'ENSEMBL',
+                pAdjustMethod = "BH",
+                pvalueCutoff = GO_p_value_threshold,
+                qvalueCutoff=1)
+
+closest_genes_7_vs_rest %>% 
+  as_tibble() %>%
+  dplyr::filter(p_val_adj < p_val_adj_threshold, avg_log2FC > log_FC_threshold) ->
+   for_GO_7 
+GO_7_vs_rest <- enrichGO(gene = stickleback_to_zebrafish_IDs(unique(for_GO_7$gene_id), conversion_table = conversion_table),
+                OrgDb         = "org.Dr.eg.db",
+                keyType       = 'ENSEMBL',
+                pAdjustMethod = "BH",
+                pvalueCutoff = GO_p_value_threshold,
+                qvalueCutoff=1)
+
+closest_genes_13_vs_rest %>% 
+  as_tibble() %>%
+  dplyr::filter(p_val_adj < p_val_adj_threshold, avg_log2FC > log_FC_threshold) ->
+   for_GO_13 
+GO_13_vs_rest <- enrichGO(gene = stickleback_to_zebrafish_IDs(unique(for_GO_13$gene_id), conversion_table = conversion_table),
+                OrgDb         = "org.Dr.eg.db",
+                keyType       = 'ENSEMBL',
+                pAdjustMethod = "BH",
+                pvalueCutoff = GO_p_value_threshold,
+                qvalueCutoff=1)
+
+
+```
+
+## GO terms for maker peaks for cluster 7+13 vs rest
+
+```{r GO_enrichment_plot_7_13, fig.width=12, fig.height=11}
+require(enrichplot)
+dotplot(GO_7_13_vs_rest, showCategory = 30,
+        title = "GO terms marker peaks for clusters 7 & 13 vs rest")
+
+```
+
+## GO terms for maker peaks for cluster 7 vs rest
+
+```{r GO_enrichment_plot_7, fig.width=12, fig.height=11}
+require(enrichplot)
+dotplot(GO_7_vs_rest, showCategory = 30,
+        title = "GO terms marker peaks for clusters 7  vs rest")
+
+```
+
+
+
+## GO terms for maker peaks for cluster 13 vs rest
+
+```{r GO_enrichment_plot_13, fig.width=12, fig.height=11}
+require(enrichplot)
+dotplot(GO_13_vs_rest, showCategory = 30,
+        title = "GO terms marker peaks for clusters 13  vs rest")
+
+```
