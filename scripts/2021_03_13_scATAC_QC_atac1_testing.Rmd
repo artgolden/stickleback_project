@@ -261,4 +261,3 @@ DimPlot(object = atac1, label = TRUE) + NoLegend()
 ```{r}
 save(atac1, file = "data/scATAC/atac1_obj_qc_clusters.RData")
 ```
-

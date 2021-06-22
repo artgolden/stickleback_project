@@ -206,3 +206,8 @@ Additional filtering has produced much nicer cluster separation.
 ```{r}
 save(atac2_heavy_filtering, file = "data/scATAC/atac2_heavy_filtering_obj_qc_clusters.RData")
 ```
+
+```{r}
+saveRDS(atac2_heavy_filtering, file = "data/scATAC/atac2_heavy_filtering_obj_qc_clusters.rds")
+```
+

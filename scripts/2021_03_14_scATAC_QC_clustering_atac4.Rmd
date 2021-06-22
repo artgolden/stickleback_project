@@ -209,3 +209,8 @@ Additional filtering did not show major improvement in cluster separation, thats
 save(atac4_heavy_filtering, file = "data/scATAC/atac4_heavy_filtering_obj_qc_clusters.RData")
 ```
 
+```{r}
+saveRDS(atac4_heavy_filtering, file = "data/scATAC/atac4_heavy_filtering_obj_qc_clusters.rds")
+```
+
+
