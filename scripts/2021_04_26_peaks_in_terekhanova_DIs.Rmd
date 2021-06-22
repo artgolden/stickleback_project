@@ -84,6 +84,8 @@ peaks_in_combined_obj_annotated <- ClosestFeature(
 peaks_overlaping_annotated <- peaks_in_combined_obj_annotated[di_overlaps@to,]
 peaks_overlaping_annotated$DI_id <- di_overlaps@from
 
+write.csv(peaks_overlaping_annotated, "data/scATAC/peaks_in_DIs_annotated.csv")
+
 # convert all non-zero values to 1
 comb_counts_matrix_binarised <- comb_counts_matrix[comb_counts_matrix@Dimnames[[1]] %in% peaks_overlaping_annotated$query_region,] # all non-zero peaks set to value 1
 comb_counts_matrix_binarised@x <- rep_len(1, length(comb_counts_matrix_binarised@x))
