@@ -1,0 +1,175 @@
+---
+title: "Plots for presentation for the thesis"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(patchwork)
+set.seed(42)
+```
+
+```{r}
+load( file = "data/scATAC/atac1_obj_qc_clusters.RData")
+```
+
+```{r}
+DimPlot(object = atac1) + NoLegend()
+```
+
+```{r}
+di_table <- read_tsv(file = "data/Terekhanova_DIs.tsv", col_names = c("chr", "start", "end", "type"))
+```
+
+```{r}
+chr_lookup_vector <- c("groupI", "groupII", "groupIII", "groupIV", "groupV", "groupVI", "groupVII", "groupVIII", "groupIX", "groupX",
+                       "groupXI", "groupXII", "groupXIII", "groupXIV", "groupXV", "groupXVI", "groupXVII", "groupXVIII", "groupXIX", "groupXX", "groupXXI")
+di_granges <- GRanges(seqnames = chr_lookup_vector[di_table$chr],
+                      ranges = IRanges(start = di_table$start, end = di_table$end))
+```
+
+```{r}
+## Sample combining was done in a separate .R script for multithreading utilisation
+load(file = "data/scATAC/combined_scATAC_samples_obj.RData")
+
+load(file = "data/scATAC/ga_granges_annotation.RData")
+annotations <- ga_tx_merged
+genome(annotations) <- "gasAcu1"
+
+# add the gene information to the object
+Annotation(combined) <- annotations
+
+```
+
+
+```{r import_cells_vs_peaks_matrix}
+load(file = "data/scATAC/combined_downsampled_counts_matrix.Rdata")
+```
+
+```{r}
+combined_peaks_ranges <- StringToGRanges(rownames(comb_counts_matrix), sep = c("-", "-"))
+```
+
+```{r}
+di_overlaps <- findOverlaps(di_granges, combined_peaks_ranges)
+```
+
+```{r}
+# annotate peaks vs cells matrix with list of overlapping regions with genes
+peaks_in_combined_obj_annotated <- ClosestFeature(
+  object = combined,
+  regions = StringToGRanges(rownames(combined), sep = c("-", "-"))
+)
+
+peaks_overlaping_annotated <- peaks_in_combined_obj_annotated[di_overlaps@to,]
+peaks_overlaping_annotated$DI_id <- di_overlaps@from
+
+```
+
+```{r}
+num_saline_cells <- sum(table(combined@meta.data[["sample"]])[c("atac1", "atac2")]) # This will no longer work, since we are subsampling both saline and freshwater
+# num_freshwater_cells <- sum(table(combined@meta.data[["sample"]])[c("atac3", "atac4")])
+
+# Sanity check that ordering in the matrix is OK
+l <- num_saline_cells + 1
+r <- num_saline_cells + 6
+if (!all(names(Idents(combined)[l:r]) == names(head(combined@assays[["ATAC"]]@fragments[[3]]@cells)))){
+  stop("sample ordering in the count matrix is wrong")
+}
+
+l_sal = 1
+r_sal = num_saline_cells 
+l_fresh = num_saline_cells + 1
+r_fresh = ncol(comb_counts_matrix)
+```
+
+```{r}
+
+
+# convert all non-zero values to 1
+comb_counts_matrix_binarised <- comb_counts_matrix[comb_counts_matrix@Dimnames[[1]] %in% peaks_overlaping_annotated$query_region,] # all non-zero peaks set to value 1
+comb_counts_matrix_binarised@x <- rep_len(1, length(comb_counts_matrix_binarised@x))
+
+# sum column-wise by gene (resulting with a matrix of num_nonzero_peaks_in_DI vs cells)
+num_nonzero_peaks_in_DI_matrix <- Matrix::Matrix(rowsum(comb_counts_matrix_binarised, peaks_overlaping_annotated$DI_id), sparse = TRUE)
+
+
+
+# Do subsampling of cells in saline and freshwater
+num_cells_to_leave <- 6000
+
+# saline and freshwater cell boundaries in the matrix recalculated after subsampling
+l_saline = 1
+r_saline = num_cells_to_leave
+l_freshwater = num_cells_to_leave + 1
+r_freshwater = num_cells_to_leave * 2
+
+start_time <- Sys.time()
+bootstrap_tables <- vector("list", length(num_cells_to_leave * 2))
+for (i in 1:1000) {
+  # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+  # @                     INSIDE THE LOOP
+  # @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+  saline_cells_to_leave <- sort(sample(l_sal:r_sal, num_cells_to_leave, replace = FALSE))
+  freshwater_cells_to_leave <- sort(sample(l_fresh:r_fresh, num_cells_to_leave, replace = FALSE))
+  cells_to_leave <- c(saline_cells_to_leave, freshwater_cells_to_leave)
+  num_nonzero_peaks_in_DI_matrix_subsampled <- num_nonzero_peaks_in_DI_matrix[,cells_to_leave]
+
+  output <- apply(num_nonzero_peaks_in_DI_matrix_subsampled, 1, function(row){
+    # message(paste0("row = ", row))
+    x <- row[1:r_saline]
+    x <- x[x != 0 & !is.na(x)]
+    y <- row[l_freshwater:r_freshwater]
+    y <- y[y != 0 & !is.na(y)]
+    if(length(x) > 20 & length(y) > 20){
+      saline_var <- var(x)
+      freshwater_var <- var(y)
+      f.test.res <- var.test(x, y)
+      return(data.frame(f_ratio = f.test.res$estimate, p_val = f.test.res$p.value, saline_var = saline_var, freshwater_var = freshwater_var))
+    }else{
+      return(data.frame(f_ratio = NA, p_val = NA, saline_var = NA, freshwater_var = NA))
+    }
+  })
+  num_nonzero_peaks_in_DIs_varience_table <- do.call(rbind,output)
+  
+  num_nonzero_peaks_in_DIs_varience_table %>% 
+    dplyr::filter(p_val < 0.05 & f_ratio > 0 & f_ratio != Inf & p_val != 0) %>%
+    rownames_to_column(var = "DI_id") -> num_nonzero_peaks_in_DIs_varience_table_filtered_downsampled
+  num_nonzero_peaks_in_DIs_varience_table_filtered_downsampled <- cbind(num_nonzero_peaks_in_DIs_varience_table_filtered_downsampled,
+                                                                        di_table[as.integer(num_nonzero_peaks_in_DIs_varience_table_filtered_downsampled$DI_id),])
+  num_nonzero_peaks_in_DIs_varience_table_filtered_downsampled$iteration <- i
+  bootstrap_tables[[i]] <-num_nonzero_peaks_in_DIs_varience_table_filtered_downsampled
+}
+end_time <- Sys.time()
+```
+  
+```{r}
+#elegant way of combining a list of tibbles
+bootstraps_combined <- bind_rows(bootstrap_tables)
+bootstraps_combined$DI_id <- factor(bootstraps_combined$DI_id, levels = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10",
+                                                                          "11", "12", "13", "14", "15", "16", "17", "18", "19"))
+```
+
+```{r }
+# pdf(file = "plots/scATAC/varience_bootstraping_DIs.pdf")
+bootstraps_combined %>% 
+  ggplot(aes(x = DI_id, y = f_ratio)) +
+  geom_boxplot() +
+  coord_cartesian(ylim = c(0,2.75)) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "dark grey") +
+  # labs(title = "Varience ratio between cells in saline and freshwater in divergence islands") +
+  ylab("Соотношение дисперсий (F-ratio)") +
+  xlab("Островки дивергенции") +
+  theme(text = element_text(size = 18),
+        axis.text = element_text(size = 20)) 
+# dev.off()
+```
+
