@@ -1,0 +1,72 @@
+---
+title: "scATAC f_ratio histogram"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(patchwork)
+set.seed(42)
+```
+
+### F-test histogram for scATAC by genes
+```{r fig.width=12, fig.height=7}
+f.test.filtered <- read_csv(file = "data/scATAC/saline_vs_freshwater_varience_table_on_balanced_matrix_with_number_of_peaks_per_gene_filtered.csv")
+p_f_ratio_blood <- ggplot(f.test.filtered, aes(x=f_ratio))+
+  geom_histogram(binwidth = 0.25) +
+  geom_vline(aes(xintercept=median(f_ratio)), color="blue", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(0, 5)) +
+  theme_classic(base_size = 20) +
+  xlab("F-ratio") +
+  ylab("Number of genes")
+
+# svg(filename = "plots/for_article/f_1f_F_ratio_histogram_for_blood_cluster.svg")
+# print(p_f_ratio_blood)
+# dev.off()
+p_f_ratio_blood
+```
+
+### F-test histogram for scATAC by peaks
+```{r fig.width=12, fig.height=7}
+f.test.filtered <- read_csv(file = "data/scATAC/saline_vs_freshwater_varience_table_on_balanced_matrix_based_on_peaks_height_filtered.csv")
+p_f_ratio_blood <- ggplot(f.test.filtered, aes(x=f_ratio))+
+  geom_histogram(binwidth = 0.25) +
+  geom_vline(aes(xintercept=median(f_ratio)), color="blue", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(0, 5)) +
+  theme_classic(base_size = 20) +
+  xlab("F-ratio") +
+  ylab("Number of peaks")
+
+# svg(filename = "plots/for_article/f_1f_F_ratio_histogram_for_blood_cluster.svg")
+# print(p_f_ratio_blood)
+# dev.off()
+p_f_ratio_blood
+```
+
+
+
+```{r}
+
+# MISSING IMPORT OF THE INPUT TABLE!
+saline_vs_freshwater_varience_table %>% 
+  dplyr::filter(f_ratio != Inf) %>% 
+  rownames_to_column(var = "peak") %>% ggplot( aes(x=f_ratio))+
+  geom_histogram(binwidth = 0.25) +
+  geom_vline(aes(xintercept=median(f_ratio)), color="blue", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(0, 5)) +
+  theme_classic(base_size = 20) +
+  xlab("F-ratio") +
+  ylab("Number of peaks") + 
+  labs(title = "scATAC peaks unfiltered")
+```
+
+
+
