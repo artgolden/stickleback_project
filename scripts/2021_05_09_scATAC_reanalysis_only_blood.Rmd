@@ -386,5 +386,21 @@ bootstraps_combined %>%
   xlab("Divergence Island ID")
 ```
 
+```{r}
+pdf(file = "plots/for_article/Suppl_scATAC_reanalysis_blood_clusters.pdf", width = 11, height = 11)
+dotplot(saline_top_GO, showCategory = 30,
+        title = "top 30 GO terms, saline_blood_top_GO")
+dotplot(freshwater_top_GO, showCategory = 30,
+        title = "top 30 GO terms, freshwater_blood_top_GO")
+bootstraps_combined %>% 
+  ggplot(aes(x = DI_id, y = f_ratio)) +
+  geom_boxplot() +
+  coord_cartesian(ylim = c(0,2.75)) +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "dark grey") +
+  labs(title = "Varience ratio between cells in saline and freshwater in divergence islands (blood only)") +
+  ylab("varience ratio (bootstraping)") +
+  xlab("Divergence Island ID")
+dev.off()
+```
 
 
