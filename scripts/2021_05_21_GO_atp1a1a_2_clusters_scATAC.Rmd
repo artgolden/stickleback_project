@@ -158,3 +158,16 @@ dotplot(GO_13_vs_rest, showCategory = 30,
         title = "GO terms marker peaks for clusters 13  vs rest")
 
 ```
+
+
+```{r}
+pdf(file = "plots/for_article/Suppl_scATAC_GO_for_atp1a1a_2_clusters.pdf", width = 11)
+dotplot(GO_7_13_vs_rest, showCategory = 30,
+        title = "GO terms marker peaks for clusters 7 & 13 vs rest")
+dotplot(GO_7_vs_rest, showCategory = 30,
+        title = "GO terms marker peaks for clusters 7  vs rest")
+dotplot(GO_13_vs_rest, showCategory = 30,
+        title = "GO terms marker peaks for clusters 13  vs rest")
+dev.off()
+```
+
