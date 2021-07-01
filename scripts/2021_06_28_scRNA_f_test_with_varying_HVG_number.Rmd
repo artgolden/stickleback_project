@@ -1,0 +1,276 @@
+---
+title: "F-ratio histogram for scRNA data with varying threshold for HVG detection"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+library(Seurat)
+set.seed(42)
+```
+
+
+```{r}
+# TODO:
+# - 
+# - 
+# - 
+# - 
+# - 
+```
+
+```{r}
+
+```
+
+```{r subsetting_blood_for_each_sample_and_HVGs}
+load(file = "data/rna.integrated.filtered.after.clustering.obj.RData")
+rna.integrated.cluster.blood <- subset(rna.integrated, idents = 0)
+blood_cells_ids <- rna.integrated.cluster.blood@assays[["RNA"]]@counts@Dimnames[[2]]
+# blood_cells_ids <- paste(blood_cells_ids, rep("-1", length(blood_cells_ids)), sep = "") 
+
+
+stickleback.rna.comb <- readRDS(file = "data/stickleback.rna.seurat.samples.PURE_ENSEMBLE.rds")
+rna.list <- SplitObject(stickleback.rna.comb, split.by = "orig.ident")
+vst.list <- data.frame()
+vst_one <- data.frame()
+for (i in 1:length(rna.list)) {
+    # cells_to_keep <- gsub("-1", "", rna.list[[i]]@assays[["RNA"]]@counts@Dimnames[[2]])
+    cells_to_keep <- rna.list[[i]]@assays[["RNA"]]@counts@Dimnames[[2]]
+    cells_to_keep <- subset(cells_to_keep, cells_to_keep %in% blood_cells_ids)
+    rna.list[[i]] <- subset(rna.list[[i]], cells = cells_to_keep)
+    rna.list[[i]] <- NormalizeData(rna.list[[i]], verbose = FALSE)
+    rna.list[[i]] <- FindVariableFeatures(rna.list[[i]], selection.method = "vst", 
+        nfeatures = 2000, verbose = FALSE)
+    tmp.frame <- data.frame(sample_vst = rna.list[[i]]@assays[["RNA"]]@meta.features[["vst.variance.standardized"]],
+                            sample_ids = rna.list[[i]]@assays[["RNA"]]@counts@Dimnames[[1]])
+    tmp.frame <- subset(tmp.frame, sample_ids %in% rna.list[[i]]@assays[["RNA"]]@var.features)
+    tmp.frame <- tmp.frame[order(-tmp.frame$sample_vst),]
+    tmp.frame <- mutate(tmp.frame, ID = row_number())
+    tmp.frame$sample <- paste0("sample_", i)
+    if(length(vst_one) == 0){
+      
+      vst_one <- tmp.frame
+    }
+    else{
+      vst_one <- rbind(vst_one, tmp.frame)
+    }
+    tmp.frame$sample <- NULL
+    
+    colrenames <- c(paste0("sample_", i, "_variance_std"), paste0("sample_", i, "_ids"), "ID")
+    colnames(tmp.frame) <- colrenames
+    if(length(vst.list) == 0){
+      vst.list <- tmp.frame
+    }
+    else{
+      vst.list <- merge(vst.list, tmp.frame, by = "ID")
+    }
+}
+# write.table(vst.list, file = "data/top_2000_HVGs_for_each_sample.tsv", sep = "\t")
+# head(vst.list, 50)
+```
+
+```{r}
+hvg_union <- unique(c(vst.list$sample_1_ids,
+               vst.list$sample_2_ids,
+               vst.list$sample_3_ids,
+               vst.list$sample_4_ids))
+
+hvg_counts_sample_1 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.1"]]@assays[["RNA"]]@counts[rownames(rna.list[["stickleback.sample.1"]]@assays[["RNA"]]@counts) %in% hvg_union,]))
+hvg_counts_sample_2 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.2"]]@assays[["RNA"]]@counts[rownames(rna.list[["stickleback.sample.2"]]@assays[["RNA"]]@counts) %in% hvg_union,]))
+hvg_counts_sample_3 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.3"]]@assays[["RNA"]]@counts[rownames(rna.list[["stickleback.sample.3"]]@assays[["RNA"]]@counts) %in% hvg_union,]))
+hvg_counts_sample_4 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.4"]]@assays[["RNA"]]@counts[rownames(rna.list[["stickleback.sample.4"]]@assays[["RNA"]]@counts) %in% hvg_union,]))
+
+hvg_counts_saline <- merge(hvg_counts_sample_1, hvg_counts_sample_2, by="rowname")
+hvg_counts_freshwater <- merge(hvg_counts_sample_3, hvg_counts_sample_4, by="rowname")
+```
+
+```{r}
+hvg_counts_all <- merge(hvg_counts_saline, hvg_counts_freshwater, by="rowname")
+# saveRDS(hvg_counts_all, file = "testing/hvg_counts_scRNA_for_F_test.rds")
+
+saline_right_boundary <- length(hvg_counts_saline) - 1
+freshwater_left_boundary <- saline_right_boundary + 1 - 1
+freshwater_right_boundary <- saline_right_boundary + length(hvg_counts_freshwater) - 1 - 1
+
+output <- apply(hvg_counts_all[,2:freshwater_right_boundary], 1, function(row){
+  x <- row[1:saline_right_boundary]
+  # x <- x[x != 0]
+  y <- row[freshwater_left_boundary:(freshwater_right_boundary)]
+  # y <- y[y != 0]
+  if(length(x) > 10 & length(y) > 10){
+    f.test.res <- var.test(x, y)
+    # if(is.finite(f.test.res$estimate) & f.test.res$estimate == 0){
+    #   f.test.res$estimate = 1 # ========================================================== ARTIFICIALLY CHANGING ZEROES TO 1
+    # }
+    return(data.frame(f_ratio = f.test.res$estimate, p_val = f.test.res$p.value))
+  }else{
+    return(data.frame(f_ratio = NA, p_val = NA))
+  }
+})
+f.test.frame <- do.call(rbind,output)
+rownames(f.test.frame) <- hvg_counts_all$rowname
+
+```
+
+### F-test for dispersion for blood cluster cells separately
+
+```{r f_test_for_blood_cluster}
+f.test.filtered.blood <- subset(f.test.frame, p_val < 0.05 & f_ratio > 0 & f_ratio != Inf & p_val != 0)
+# head(f.test.filtered, 10)
+# write.table(f.test.filtered.blood, file = "data/f.test.filtered.blood.tsv", sep = '\t')
+f.test.filtered.blood
+```
+
+### F-test histogram for blood cluster
+```{r}
+# f.test.filtered.blood <- read.table(file = "data/f.test.filtered.blood.tsv", sep = "\t", header = TRUE)
+p_f_ratio_blood <- ggplot(f.test.filtered.blood, aes(x=f_ratio))+
+  geom_histogram(binwidth = 0.25) +
+  geom_vline(aes(xintercept=median(f_ratio)), color="blue", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(0, 5)) +
+  theme_classic(base_size = 20) +
+  xlab("F-ratio") +
+  ylab("Number of genes") +
+  labs(title = "marine/freshwater variance in genes\n in scRNA data with 5000 HVG per sample")
+
+# svg(filename = "plots/for_article/f_1f_F_ratio_histogram_for_blood_cluster.svg")
+# print(p_f_ratio_blood)
+# dev.off()
+p_f_ratio_blood
+```
+
+### F-test histogram for blood cluster NO FILTERING
+
+```{r}
+# f.test.filtered.blood <- read.table(file = "data/f.test.filtered.blood.tsv", sep = "\t", header = TRUE)
+ f.test.frame %>% 
+  filter(is.finite(f_ratio), p_val < 0.05, p_val > 0) %>% 
+  # transmute(f_ratio = log2(f_ratio)) %>% 
+  ggplot(aes(x=f_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(f_ratio)), color="red", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(0, 5)) +
+  theme_classic(base_size = 20) +
+  xlab("F-ratio") +
+  ylab("Number of genes") -> p_f_ratio_blood
+  # labs(title = "marine/freshwater variance in genes\n in scRNA data with 5000 HVG per sample") 
+
+# svg(filename = "plots/for_article/f_1f_F_ratio_histogram_for_blood_cluster.svg")
+# print(p_f_ratio_blood)
+# dev.off()
+p_f_ratio_blood
+```
+
+```{r}
+# f.test.filtered.blood <- read.table(file = "data/f.test.filtered.blood.tsv", sep = "\t", header = TRUE)
+ f.test.frame %>% 
+  filter(is.finite(f_ratio)) %>% 
+  # transmute(f_ratio = log2(f_ratio)) %>% 
+  ggplot(aes(x=f_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(f_ratio)), color="red", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(0, 5)) +
+  theme_classic(base_size = 20) +
+  xlab("F-ratio") +
+  ylab("Number of genes") -> p_f_ratio_blood
+  # labs(title = "marine/freshwater variance in genes\n in scRNA data with 5000 HVG per sample") 
+
+# svg(filename = "plots/for_article/f_1f_F_ratio_histogram_for_blood_cluster.svg")
+# print(p_f_ratio_blood)
+# dev.off()
+p_f_ratio_blood
+```
+
+
+```{r}
+apply(hvg_counts_all[,-1], 1, sum) -> hvg_counts_all_rowsum
+apply(hvg_counts_all[,-1], 1, mean) -> hvg_counts_all_rowmean
+# apply(hvg_counts_all[,-1], 1, function(x){ifelse(x)}) -> hvg_counts_all_zeros_count
+rowSums(hvg_counts_all[,-1] == 0) -> hvg_counts_all_zeros_count
+hvg_counts_metrics <- tibble(gene = hvg_counts_all$rowname,
+                             sum_expression = hvg_counts_all_rowsum,
+                             zero_count = hvg_counts_all_zeros_count,
+                             mean_expression = hvg_counts_all_rowmean)
+```
+
+```{r}
+ hvg_counts_metrics %>% 
+  # filter(is.finite(f_ratio), f_ratio > 0) %>%
+  transmute(mean_expression = log2(mean_expression)) %>%
+  ggplot(aes(x=mean_expression))+
+  geom_histogram( fill = "#a2b1ba", color = "#899ba7") + 
+  # xlab("F-ratio") +
+  xlab("Log2 mean expression") +
+  labs(title = "Mean expression in 1432 HVGs used for F-test in scRNA")
+```
+
+```{r}
+ hvg_counts_metrics %>% 
+  # filter(is.finite(f_ratio), f_ratio > 0) %>%
+  # transmute(zero_count = log2(zero_count)) %>%
+  ggplot(aes(x=zero_count))+
+  geom_histogram( fill = "#a2b1ba", color = "#899ba7", aes(y =log10(..count..))) + 
+  # xlab("F-ratio") +
+  xlab("Log2 zero_count") +
+  labs(title = "Zero count in 1432 HVGs used for F-test in scRNA")
+```
+
+```{r fig.width=11}
+hvg_counts_metrics %>% 
+  filter(log2(mean_expression) > -12, zero_count < 16500) -> expression_filtered_HVGs
+
+ f.test.frame %>% 
+  rownames_to_column(var = "gene") %>% 
+  filter(is.finite(f_ratio), gene %in% expression_filtered_HVGs$gene) %>% 
+  # transmute(f_ratio = log2(f_ratio)) %>% 
+  ggplot(aes(x=f_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(f_ratio)), color="red", linetype="dashed", size=1) +
+  # geom_vline(aes(xintercept=mean(f_ratio)), color="blue", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(0, 6)) +
+  theme_classic(base_size = 20) +
+  xlab("F-ratio") +
+  ylab("Number of genes") +
+  labs(title = "marine/freshwater variance in genes
+in scRNA data with 2000 HVG per sample
+filtration: log2(mean_expression) > -12,
+zero_count < 16500 (out of 19161 cells)") -> p_f_ratio_blood
+
+# svg(filename = "plots/for_article/f_1f_F_ratio_histogram_for_blood_cluster.svg")
+# print(p_f_ratio_blood)
+# dev.off()
+p_f_ratio_blood
+```
+
+```{r fig.width=11}
+hvg_counts_metrics %>% 
+  filter(log2(mean_expression) > -10) -> expression_filtered_HVGs
+
+ f.test.frame %>% 
+  rownames_to_column(var = "gene") %>% 
+  filter(is.finite(f_ratio), gene %in% expression_filtered_HVGs$gene) %>% 
+  # transmute(f_ratio = log2(f_ratio)) %>% 
+  ggplot(aes(x=f_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(f_ratio)), color="red", linetype="dashed", size=1) +
+  # geom_vline(aes(xintercept=mean(f_ratio)), color="blue", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(0, 6)) +
+  theme_classic(base_size = 20) +
+  xlab("F-ratio") +
+  ylab("Number of genes") +
+  labs(title = "marine/freshwater variance in genes
+in scRNA data with 2000 HVG per sample
+filtration: log2(mean_expression) > -10") -> p_f_ratio_blood
+
+# svg(filename = "plots/for_article/f_1f_F_ratio_histogram_for_blood_cluster.svg")
+# print(p_f_ratio_blood)
+# dev.off()
+p_f_ratio_blood
+```
+
