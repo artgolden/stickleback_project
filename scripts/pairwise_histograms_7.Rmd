@@ -130,4 +130,3 @@ chisq.test(samples_over_clusters_matrix, correct = FALSE)
 Frequencies of cells have been normalized to adjust for different number of sequenced freshwater and saline cells. The table above shows normalized numbers of cells.
 
 
-
