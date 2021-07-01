@@ -336,7 +336,7 @@ mu_btw <- plyr::ddply(frame_for_hist, "pair", summarise, grp.mean=mean(dist))
 small_frame_for_hist <- frame_for_hist[sample(nrow(frame_for_hist), 100000),]
 
 p <- ggplot(small_frame_for_hist, aes(x=dist, fill=pair, color=pair)) +
-  geom_histogram(position="identity", alpha=0.5, binwidth = 0.15) + 
+  geom_histogram(aes(y = ..ncount..), position="identity", alpha=0.5, binwidth = 0.15) + 
   geom_vline(data=mu_btw, aes(xintercept=grp.mean, color=pair),
              linetype="dashed")+
   coord_cartesian(xlim = c(0, 15)) +
@@ -344,10 +344,81 @@ p <- ggplot(small_frame_for_hist, aes(x=dist, fill=pair, color=pair)) +
   xlab("Distance between pair of cells") +
   ylab("Number cell pairs")
 p
-svg(filename = "plots/for_article/f_1e_histogram_of_distance_btw_cells_within_saline_and_freshwater_only_blood.svg", width = 11, height = 6)
+svg(filename = "plots/for_article/f_1e_histogram_of_distance_btw_cells_within_saline_and_freshwater_only_blood_equalized_heights.svg", width = 11, height = 6)
 print(p)
 dev.off()
 ```
+
+
+```{r pairwise_histogram_with_downsampling, fig.width=11}
+load(file = "data/rna.integrated.filtered.after.clustering.obj.RData")
+rna.integrated.cluster.blood <- subset(rna.integrated, idents = 0)
+
+rna.integrated.cluster.blood <- FindNeighbors(rna.integrated.cluster.blood, dims = 1:15)
+rna.integrated.cluster.blood  <- FindClusters(rna.integrated.cluster.blood, resolution = 0.3)
+rna.integrated.cluster.blood <- RunPCA(rna.integrated.cluster.blood)
+
+set.seed(42)
+pca_raw_blood <- as.data.frame(rna.integrated.cluster.blood@reductions[["pca"]]@cell.embeddings)
+pca_raw_blood$sample <- rna.integrated.cluster.blood@meta.data[["orig.ident"]]
+pca_raw_blood <- pca_raw_blood[sample(nrow(pca_raw_blood)), c("PC_1", "PC_2","PC_3","PC_4","PC_5","PC_6","PC_7","PC_8","PC_9","PC_10","sample")]
+
+pca_saline_1_half <- subset(pca_raw_blood, sample == "stickleback.sample.1")[,1:10]
+pca_saline_2_half <- subset(pca_raw_blood, sample == "stickleback.sample.2")[,1:10]
+pca_saline_2_half <- pca_saline_2_half[sample(nrow(pca_saline_2_half), nrow(pca_saline_1_half)),] # ========== DOWNSAMPLING CELL COUNT TO BALANCE SAMPLING FROM BOTH FISH
+ 
+dist_matrix_salineVsaline <- fields::rdist(pca_saline_1_half, pca_saline_2_half)
+
+pca_freshwater_1_half <- subset(pca_raw_blood, sample == "stickleback.sample.3")[,1:10]
+pca_freshwater_1_half <- pca_freshwater_1_half[sample(nrow(pca_freshwater_1_half), nrow(pca_saline_1_half)),]
+pca_freshwater_2_half <- subset(pca_raw_blood, sample == "stickleback.sample.4")[,1:10]
+pca_freshwater_2_half <- pca_freshwater_2_half[sample(nrow(pca_freshwater_2_half), nrow(pca_freshwater_1_half)),]
+
+dist_matrix_freshwaterVfreshwater <- fields::rdist(pca_freshwater_1_half, pca_freshwater_2_half)
+
+frame_for_hist <- data.frame(dist = c(as.vector(dist_matrix_salineVsaline), as.vector(dist_matrix_freshwaterVfreshwater)),
+                             pair = c(rep("salineVsaline", length(dist_matrix_salineVsaline)),
+                                      rep("freshwaterVfreshwater", length(dist_matrix_freshwaterVfreshwater))))
+
+mu_btw <- plyr::ddply(frame_for_hist, "pair", summarise, grp.mean=mean(dist))
+
+small_frame_for_hist <- frame_for_hist[sample(nrow(frame_for_hist), 100000),]
+
+p <- ggplot(small_frame_for_hist, aes(x=dist, fill=pair, color=pair)) +
+  geom_histogram(aes(y = ..ncount..), position="identity", alpha=0.5, binwidth = 0.15) + 
+  geom_vline(data=mu_btw, aes(xintercept=grp.mean, color=pair),
+             linetype="dashed")+
+  # coord_cartesian(xlim = c(0, 15)) +
+  theme_classic(base_size = 20) +
+  xlab("Distance between pair of cells") +
+  ylab("Number cell pairs")
+p
+svg(filename = "plots/for_article/Suppl_histogram_of_distance_btw_cells_within_saline_and_freshwater_only_blood_equalized_heights_WITH_DOWNSAMPLING.svg", width = 11, height = 6)
+print(p)
+dev.off()
+```
+
 ```{r means_table_blood_cluster_btw_phenotype_variability}
 mu_btw
 ```
+
+# F-ratio without filtering
+
+```{r}
+# f.test.filtered.blood <- read.table(file = "data/f.test.filtered.blood.tsv", sep = "\t", header = TRUE)
+# MISSING IMPORT OF UNFILTERED TABLE
+f.test.frame <- subset(f.test.frame, is.finite(f.test.frame$f_ratio))
+p_f_ratio_blood <- ggplot(f.test.frame, aes(x=f_ratio))+
+  geom_histogram(binwidth = 0.25) +
+  geom_vline(aes(xintercept=median(f_ratio)), color="blue", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(0, 5)) +
+  theme_classic(base_size = 20) +
+  xlab("F-ratio") +
+  ylab("Number of genes")
+
+# svg(filename = "plots/for_article/f_1f_F_ratio_histogram_for_blood_cluster.svg")
+# print(p_f_ratio_blood)
+# dev.off()
+p_f_ratio_blood
+```
+

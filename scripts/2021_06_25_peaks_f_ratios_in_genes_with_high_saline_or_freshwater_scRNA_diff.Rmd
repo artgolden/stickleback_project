@@ -1,0 +1,135 @@
+---
+title: "scATAC peaks f-ratio analysis from genes that are top and bottom by scRNA-seq f-ratio"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+# library(Signac)
+library(Seurat)
+# library(GenomeInfoDb)
+# library(GenomicRanges)
+set.seed(42)
+```
+
+
+```{r}
+# TODO:
+# + import scRNA-seq gene list with f-ratios
+# + choose top and bottom 100
+# + import scATAC-seq annotated peaks list with f-ratios
+# + intersect scATAC peaks list with top and bottom scRNA 100
+# + plot intersected peaks' f-ratios on a histogram
+```
+
+
+```{r}
+rna_fratios <- read_csv(file = "data/varience_comparison_table_blood_cluster.csv")
+rna_fratios <- rename(rna_fratios, ensembl_id = X1)
+
+rna_fratios %>% top_n(100, f_ratio) -> top_rna
+rna_fratios %>% top_n(-100, f_ratio) -> bottom_rna
+rna_fratios %>% filter(f_ratio < 1) -> freshwater_rna
+rna_fratios %>% filter(f_ratio > 1) -> saline_rna
+
+atac_fratios <- read_csv(file = "data/scATAC/scATAC_saline_vs_freshwater_var_table_annot.csv")
+```
+
+```{r fig.width=11}
+atac_vs_top <- subset(atac_fratios, gene_id %in% top_rna$ensembl_id)
+atac_vs_top %>% 
+  dplyr::filter(f_ratio != Inf, f_ratio > 0) %>% 
+  transmute(f_ratio = log2(f_ratio)) %>%
+  rownames_to_column(var = "peak") %>% ggplot( aes(x=f_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(f_ratio)), color="red", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(-3, 3)) +
+  theme_classic(base_size = 20) +
+  xlab("Log-Ratio of open chromatin variances\n(marine/freshwater)") +
+  ylab("Number of peaks")  +
+  labs(title = "Log-Ratio of open chromatin variances of peaks in genes\n with high variance of expression in marine fish (top100 f-ratio in scRNA)") -> top_plot
+top_plot
+```
+
+```{r fig.width=11}
+atac_vs_bottom <- subset(atac_fratios, gene_id %in% bottom_rna$ensembl_id)
+atac_vs_bottom %>% 
+  dplyr::filter(f_ratio != Inf, f_ratio > 0) %>% 
+  transmute(f_ratio = log2(f_ratio)) %>%
+  rownames_to_column(var = "peak") %>% ggplot( aes(x=f_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(f_ratio)), color="red", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(-3, 3)) +
+  theme_classic(base_size = 20) +
+  xlab("Log-Ratio of open chromatin variances\n(marine/freshwater)") +
+  ylab("Number of peaks")  +
+  labs(title = "Log-Ratio of open chromatin variances of peaks in genes\n with high variance of expression in freshwater fish(bottom100 f-ratio in scRNA)") -> bottom_plot
+bottom_plot
+```
+
+
+```{r fig.width=11}
+atac_fratios %>% 
+  dplyr::filter(f_ratio != Inf, f_ratio > 0) %>% 
+  transmute(f_ratio = log2(f_ratio)) %>%
+  rownames_to_column(var = "peak") %>% ggplot( aes(x=f_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(f_ratio)), color="red", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(-3, 3)) +
+  theme_classic(base_size = 20) +
+  xlab("Log-Ratio of open chromatin variances\n(marine/freshwater)") +
+  ylab("Number of peaks")  +
+  labs(title = "Log-Ratio of open chromatin variances of peaks in genes\n with high variance of expression \n (All 1461 singnificant genes by f-test in scRNA)") -> all_plot
+all_plot
+```
+
+```{r fig.width=11}
+subset(atac_fratios, gene_id %in% freshwater_rna$ensembl_id) %>% 
+  dplyr::filter(f_ratio != Inf, f_ratio > 0) %>% 
+  transmute(f_ratio = log2(f_ratio)) %>%
+  rownames_to_column(var = "peak") %>% ggplot( aes(x=f_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(f_ratio)), color="red", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(-3, 3)) +
+  theme_classic(base_size = 20) +
+  xlab("Log-Ratio of open chromatin variances\n(marine/freshwater)") +
+  ylab("Number of peaks")  +
+  labs(title = "Log-Ratio of open chromatin variances of peaks in genes
+with high variance of expression in freshwater fish\n (f-ratio < 1 genes by f-test in scRNA)") -> freshwater_plot
+freshwater_plot
+```
+
+```{r fig.width=11}
+subset(atac_fratios, gene_id %in% saline_rna$ensembl_id) %>% 
+  dplyr::filter(f_ratio != Inf, f_ratio > 0) %>% 
+  transmute(f_ratio = log2(f_ratio)) %>%
+  rownames_to_column(var = "peak") %>% ggplot( aes(x=f_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(f_ratio)), color="red", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(-3, 3)) +
+  theme_classic(base_size = 20) +
+  xlab("Log-Ratio of open chromatin variances\n(marine/freshwater)") +
+  ylab("Number of peaks")  +
+  labs(title = "Log-Ratio of open chromatin variances of peaks in genes
+with high variance of expression in saline fish\n (f-ratio > 1 genes by f-test in scRNA)") -> saline_plot
+saline_plot
+```
+
+```{r}
+pdf(file = "plots/for_article/Suppl_scATAC_peaks_f_ratio_histogram_for_variable_genes_in_scRNA.pdf", width = 13)
+top_plot
+bottom_plot
+all_plot
+freshwater_plot
+saline_plot
+dev.off()
+```
+
+
+
+

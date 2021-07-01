@@ -1,0 +1,434 @@
+---
+title: "scATAC plots for the article"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(GenomicRanges)
+set.seed(42)
+```
+
+# Single sample analysis general plots
+
+```{r}
+load(file = "data/scATAC/atac1_obj_qc_clusters.RData")
+atac2 <- readRDS(file = "data/scATAC/atac2_heavy_filtering_obj_qc_clusters.rds")
+load(file = "data/scATAC/atac3_obj_qc_clusters.RData")
+atac4 <- readRDS(file = "data/scATAC/atac4_heavy_filtering_obj_qc_clusters.rds")
+```
+
+```{r atac1_plots}
+pdf(file = "plots/for_article/scATAC_atac1_sample_UMAP.pdf")
+DimPlot(object = atac1, label = TRUE) + NoLegend()
+dev.off()
+DimPlot(object = atac1, label = TRUE) + NoLegend()
+
+```
+
+```{r fig.width=11, fig.height=12}
+p1 <- TSSPlot(atac1, group.by = 'high.tss') + NoLegend()
+p2 <- VlnPlot(
+  object = atac1,
+  features = c('pct_reads_in_peaks', 'peak_region_fragments',
+               'TSS.enrichment', 'nucleosome_signal'),
+  pt.size = 0.1,
+  ncol = 4, 
+  group.by = "orig.ident"
+)
+pdf(file = "plots/for_article/Suppl_scATAC_atac1_sample_QC.pdf", width = 10, height = 9)
+p1 / p2
+dev.off()
+p1 / p2
+```
+
+
+```{r atac2_plots}
+pdf(file = "plots/for_article/scATAC_atac2_sample_UMAP.pdf")
+DimPlot(object = atac2, label = TRUE) + NoLegend()
+dev.off()
+DimPlot(object = atac2, label = TRUE) + NoLegend()
+```
+
+```{r fig.width=11, fig.height=12}
+p1 <- TSSPlot(atac2, group.by = 'high.tss') + NoLegend()
+p2 <- VlnPlot(
+  object = atac2,
+  features = c('pct_reads_in_peaks', 'peak_region_fragments',
+               'TSS.enrichment', 'nucleosome_signal'),
+  pt.size = 0.1,
+  ncol = 4, 
+  group.by = "orig.ident"
+)
+pdf(file = "plots/for_article/Suppl_scATAC_atac2_sample_QC.pdf", width = 10, height = 9)
+p1 / p2
+dev.off()
+p1 / p2
+```
+
+```{r atac3_plots}
+pdf(file = "plots/for_article/scATAC_atac3_sample_UMAP.pdf")
+DimPlot(object = atac3, label = TRUE) + NoLegend()
+dev.off()
+DimPlot(object = atac3, label = TRUE) + NoLegend()
+```
+
+```{r fig.width=11, fig.height=12}
+p1 <- TSSPlot(atac3, group.by = 'high.tss') + NoLegend()
+p2 <- VlnPlot(
+  object = atac3,
+  features = c('pct_reads_in_peaks', 'peak_region_fragments',
+               'TSS.enrichment', 'nucleosome_signal'),
+  pt.size = 0.1,
+  ncol = 4, 
+  group.by = "orig.ident"
+)
+pdf(file = "plots/for_article/Suppl_scATAC_atac3_sample_QC.pdf", width = 10, height = 9)
+p1 / p2
+dev.off()
+p1 / p2
+```
+
+```{r atac4_plots}
+pdf(file = "plots/for_article/scATAC_atac4_sample_UMAP.pdf")
+DimPlot(object = atac4, label = TRUE) + NoLegend()
+dev.off()
+DimPlot(object = atac4, label = TRUE) + NoLegend()
+```
+
+```{r fig.width=11, fig.height=12}
+p1 <- TSSPlot(atac4, group.by = 'high.tss') + NoLegend()
+p2 <- VlnPlot(
+  object = atac4,
+  features = c('pct_reads_in_peaks', 'peak_region_fragments',
+               'TSS.enrichment', 'nucleosome_signal'),
+  pt.size = 0.1,
+  ncol = 4, 
+  group.by = "orig.ident"
+)
+pdf(file = "plots/for_article/Suppl_scATAC_atac4_sample_QC.pdf", width = 10, height = 9)
+p1 / p2
+dev.off()
+p1 / p2
+```
+
+# Combined samples plots
+
+```{r}
+## Sample combining was done in a separate .R script for multithreading utilisation
+load(file = "data/scATAC/combined_scATAC_samples_obj.RData")
+```
+
+```{r fig.width=9}
+pdf(file = "plots/for_article/scATAC_samples_merged_not_batch_corrected.pdf")
+print(DimPlot(combined, group.by = 'sample', pt.size = 0.1))
+dev.off
+DimPlot(combined, group.by = 'sample', pt.size = 0.1)
+```
+
+# GO analysis of top genes differential in variance according to two methods for saline/freshwater
+
+
+```{r importing_lists_with_differential_varience_calculated_two_ways}
+var_table_peaks_binarized <- read_csv(file = "data/scATAC/saline_vs_freshwater_varience_table_on_balanced_matrix_with_number_of_peaks_per_gene_filtered.csv")
+var_table_peaks_height <- read_csv(file = "data/scATAC/saline_vs_freshwater_varience_table_on_balanced_matrix_based_on_peaks_height_filtered.csv")
+```
+
+```{r sorting_and_taking_top_and_bottom}
+var_table_peaks_binarized <- arrange(var_table_peaks_binarized, -f_ratio)
+var_table_peaks_height <- arrange(var_table_peaks_height, -f_ratio)
+```
+
+```{r stickleback_to_zebrafish_IDs_function}
+conversion_table <- read.table(file = "data/stickleback_zebrafish_orthologs.tsv", sep = "\t", header = TRUE)
+stickleback_to_zebrafish_IDs <- function(stickleback_ensembl_ids, conversion_table, id_type="zebrafish_ensembl"){
+  conversion_table <- merge(data.frame(stickleback_ensembl = stickleback_ensembl_ids), conversion_table, by="stickleback_ensembl", sort=FALSE)
+  zebrafish_ids <- conversion_table[,id_type]
+  return(zebrafish_ids)
+}
+```
+
+```{r intersecting_tops_and_bottoms}
+freshwater_top_threshold <- 2
+# choosing arbitrarily to include peaks and genes with high varience difference (f_ratio) > 2, more varience in freshwater
+var_table_peaks_binarized %>% filter(f_ratio > freshwater_top_threshold) -> top_binarized
+var_table_peaks_height %>% filter(f_ratio > freshwater_top_threshold) -> top_height
+top_genes_freshwater <- stickleback_to_zebrafish_IDs(intersect(top_binarized$gene, top_height$gene_id), conversion_table)
+
+saline_top_threshold <- 0.7
+var_table_peaks_binarized %>% filter(f_ratio < saline_top_threshold) -> bottom_binarized
+var_table_peaks_height %>% filter(f_ratio < saline_top_threshold) -> bottom_height
+top_genes_saline <- stickleback_to_zebrafish_IDs(intersect(bottom_binarized$gene, bottom_height$gene_id), conversion_table)
+```
+
+```{r export_genes_found}
+list(freshwater_genes = intersect(top_binarized$gene, top_height$gene_id),
+       saline_genes = intersect(bottom_binarized$gene, bottom_height$gene_id)) %>% 
+  saveRDS(file = "data/scATAC/atac_var_diff_genes.rds")
+```
+
+
+```{r GO_analysis_of_the_subsets}
+require(clusterProfiler)
+GO_p_value_threshold <- 0.1
+freshwater_top_GO <- enrichGO(gene = top_genes_freshwater,
+                OrgDb         = "org.Dr.eg.db",
+                keyType       = 'ENSEMBL',
+                pAdjustMethod = "BH",
+                pvalueCutoff = GO_p_value_threshold,
+                qvalueCutoff=1)
+
+saline_top_GO <- enrichGO(gene = top_genes_saline,
+                OrgDb         = "org.Dr.eg.db",
+                keyType       = 'ENSEMBL',
+                pAdjustMethod = "BH",
+                pvalueCutoff = GO_p_value_threshold,
+                qvalueCutoff=1)
+```
+
+Two lists of differentially variable genes were generated with two methods: taking the peak heights per gene in each cell and taking the number of non-zero valued peaks in a gene in each cell. Then the lists were filtered for f_ratio > `r freshwater_top_threshold` for top genes with high varience in freshwater and for f_ratio < `r saline_top_threshold` for high varience genes in saline. Then the filtered top subsets of the lists were intersected. The resulting 2 sets of genes were converted to Zebrafish ortologs and given as an input to GO analysis with filtering for p-value < `r GO_p_value_threshold`. Top GO terms are plotted below.
+
+```{r GO_enrichment_plots, fig.width=12}
+require(enrichplot)
+pdf(file = "plots/for_article/scATAC_GO_top_genes_diff_in_varience.pdf", width = 9)
+dotplot(saline_top_GO, showCategory = 30)
+        # title = "top 30 GO terms, saline_top_GO")
+dotplot(freshwater_top_GO, showCategory = 30)
+        # title = "top 30 GO terms, freshwater_top_GO")
+dev.off()
+dotplot(saline_top_GO, showCategory = 30)
+        # title = "top 30 GO terms, saline_top_GO")
+dotplot(freshwater_top_GO, showCategory = 30)
+        # title = "top 30 GO terms, freshwater_top_GO")
+```
+
+
+# Identification of blood clusters in scATAC data per each sample
+
+```{r}
+hem_contaning_genes <- c("ENSGACG00000013918", "ENSGACG00000013895", "ENSGACG00000014492", "ENSGACG00000008921")
+hemoglobin_related_genes <- c("HBE1", "snx3", "cpox")
+```
+
+```{r}
+require(patchwork)
+plot_gene_distribution <- function(sample_name, sample_obj){
+  query_genes <- c("HBE1", "snx3", "cpox", "ACTB")
+
+  dim_plot <- DimPlot(sample_obj, label = TRUE, combine = TRUE)[[1]] + NoLegend() + labs(title = paste0(sample_name, " clustering"))
+  feature_plot <- FeaturePlot(
+    object = sample_obj,
+    features = query_genes,
+    pt.size = 0.1,
+    max.cutoff = 'q95',
+    ncol = 3
+  )
+  
+  vln_plot <- VlnPlot(object = sample_obj,
+    features = query_genes, 
+    assay = "RNA", 
+    same.y.lims = TRUE
+    ) 
+  
+  coverage_plot <- CoveragePlot(
+    object = sample_obj,
+    region = "groupXI:13662623-13663375",
+    annotation = FALSE,
+    peaks = FALSE,
+    sep = c(":", "-"),
+  )
+  
+  wrap_plots(dim_plot,
+             feature_plot[[1]],
+             feature_plot[[3]],
+             feature_plot[[4]] + labs(title = "ACTB as control"),
+             vln_plot[[1]],
+             vln_plot[[2]],
+             vln_plot[[3]],
+             vln_plot[[4]] + labs(title = "ACTB as control"),
+             coverage_plot + labs(title = "HBE1 peaks"),
+             ncol = 3)
+
+}
+```
+
+```{r fig.width=15, fig.height=15}
+atac1_with_rna <- readRDS(file = "data/scATAC/atac1_obj_qc_clusters_calculated_RNA.rds")
+pdf(file = "plots/for_article/Suppl_scATAC_atac1_blood_clusters_identification.pdf", width = 15, height = 15)
+suppressWarnings(plot_gene_distribution(sample_name = "saline_1", sample_obj = atac1_with_rna))
+dev.off()
+suppressWarnings(plot_gene_distribution(sample_name = "saline_1", sample_obj = atac1_with_rna))
+```
+
+```{r fig.width=15, fig.height=15}
+atac2_with_rna <- readRDS(file = "data/scATAC/atac2_obj_qc_clusters_calculated_RNA.rds")
+pdf(file = "plots/for_article/Suppl_scATAC_atac2_blood_clusters_identification.pdf", width = 15, height = 15)
+suppressWarnings(plot_gene_distribution(sample_name = "saline_1", sample_obj = atac2_with_rna))
+dev.off()
+suppressWarnings(plot_gene_distribution(sample_name = "saline_1", sample_obj = atac2_with_rna))
+```
+
+```{r fig.width=15, fig.height=15}
+atac3_with_rna <- readRDS(file = "data/scATAC/atac3_obj_qc_clusters_calculated_RNA.rds")
+pdf(file = "plots/for_article/Suppl_scATAC_atac3_blood_clusters_identification.pdf", width = 15, height = 15)
+suppressWarnings(plot_gene_distribution(sample_name = "saline_1", sample_obj = atac3_with_rna))
+dev.off()
+suppressWarnings(plot_gene_distribution(sample_name = "saline_1", sample_obj = atac3_with_rna))
+```
+
+```{r fig.width=15, fig.height=15}
+atac4_with_rna <- readRDS(file = "data/scATAC/atac4_obj_qc_clusters_calculated_RNA.rds")
+pdf(file = "plots/for_article/Suppl_scATAC_atac4_blood_clusters_identification.pdf", width = 15, height = 15)
+suppressWarnings(plot_gene_distribution(sample_name = "saline_1", sample_obj = atac4_with_rna))
+dev.off()
+suppressWarnings(plot_gene_distribution(sample_name = "saline_1", sample_obj = atac4_with_rna))
+```
+
+```{r}
+rm(atac1_with_rna, atac2_with_rna, atac3_with_rna, atac4_with_rna)
+```
+
+# F-ratio histogram scATAC
+
+
+```{r}
+## Sample combining was done in a separate .R script for multithreading utilisation
+load(file = "data/scATAC/combined_scATAC_samples_obj.RData")
+
+saline_length <- table(combined@meta.data[["sample"]])[["atac1"]] + table(combined@meta.data[["sample"]])[["atac2"]]
+combined_saline_counts <- combined@assays[["ATAC"]]@counts[,1:saline_length]
+
+counts_per_cell <- colSums(combined@assays[["ATAC"]]@counts)
+mean_saline_counts_per_cell <- mean(counts_per_cell[1:saline_length])
+mean_freshwater_counts_per_cell <- mean(counts_per_cell[-(1:saline_length)])
+coverage_imbalance_ratio <- mean_freshwater_counts_per_cell/mean_saline_counts_per_cell
+
+#trying more memory efficient method by working directly on the internal vectors of the dgCMatrix
+require(scuttle)
+combined_saline_counts <- combined@assays[["ATAC"]]@counts[,1:saline_length]
+combined_saline_downsampled <- downsampleMatrix(combined_saline_counts, prop = coverage_imbalance_ratio, bycol=TRUE)
+# This one workes super efficiently!
+
+comb_counts_matrix <- cbind(
+  combined_saline_downsampled,
+  combined@assays[["ATAC"]]@counts[,-(1:saline_length)]
+)
+# save(comb_counts_matrix, file = "data/scATAC/combined_downsampled_counts_matrix.Rdata")
+
+# load(file = "data/scATAC/combined_downsampled_counts_matrix.Rdata")
+counts_per_cell <- colSums(comb_counts_matrix)
+saline_length <- table(combined@meta.data[["sample"]])[["atac1"]] + table(combined@meta.data[["sample"]])[["atac2"]]
+mean_saline_counts_per_cell_downsampled <- mean(counts_per_cell[1:saline_length])
+mean_freshwater_counts_per_cell <- mean(counts_per_cell[-(1:saline_length)])
+# the downsampling did not work in regard to counts, mean counts per cell are different for saline and freshwater
+
+num_saline_cells <- sum(table(combined@meta.data[["sample"]])[c("atac1", "atac2")])
+# num_freshwater_cells <- sum(table(combined@meta.data[["sample"]])[c("atac3", "atac4")])
+
+# Sanity check that ordering in the matrix is OK
+l <- num_saline_cells + 1
+r <- num_saline_cells + 6
+if (!all(names(Idents(combined)[l:r]) == names(head(combined@assays[["ATAC"]]@fragments[[3]]@cells)))){
+  stop("sample ordering in the count matrix is wrong")
+}
+
+l_saline = 1
+r_saline = num_saline_cells 
+l_freshwater = num_saline_cells + 1
+r_freshwater = ncol(comb_counts_matrix)
+
+
+output <- apply(comb_counts_matrix, 1, function(row){
+  # message(paste0("row = ", row))
+  x <- row[1:r_saline]
+  x <- x[ !is.na(x)]
+  y <- row[l_freshwater:r_freshwater]
+  y <- y[ !is.na(y)]
+  if(length(x) > 20 & length(y) > 20){
+    saline_var <- var(x)
+    freshwater_var <- var(y)
+    f.test.res <- var.test(x, y)
+    return(data.frame(f_ratio = f.test.res$estimate, p_val = f.test.res$p.value, saline_var = saline_var, freshwater_var = freshwater_var))
+  }else{
+    return(data.frame(f_ratio = NA, p_val = NA, saline_var = NA, freshwater_var = NA))
+  }
+  
+  # return(data.frame(test = sum(row[1:saline_right_boundary]), test.l.1 = length(row[1:saline_right_boundary]), test.l.2 = length(row[freshwater_left_boundary:freshwater_right_boundary])))
+})
+saline_vs_freshwater_varience_table <- do.call(rbind,output)
+saline_vs_freshwater_varience_table %>% 
+  dplyr::filter(p_val < 0.05 & f_ratio > 0 & f_ratio != Inf & p_val != 0) %>% 
+  rownames_to_column(var = "peak") -> saline_vs_freshwater_varience_table_filtered_downsampled
+
+load(file = "data/scATAC/ga_granges_annotation.RData")
+annotations <- ga_tx_merged
+genome(annotations) <- "gasAcu1"
+
+# add the gene information to the object
+Annotation(combined) <- annotations
+
+
+# annotate peaks vs cells matrix with genes
+peaks_in_combined_obj_annotated <- ClosestFeature(
+  object = combined,
+  regions = StringToGRanges(rownames(combined), sep = c("-", "-"))
+)
+
+saline_vs_freshwater_varience_table_filtered_downsampled_annotated <- inner_join(saline_vs_freshwater_varience_table_filtered_downsampled, peaks_in_combined_obj_annotated, by = c("peak" = "query_region"))
+
+
+```
+
+```{r}
+f.test.filtered <- saline_vs_freshwater_varience_table_filtered_downsampled_annotated
+p_f_ratio_blood <- ggplot(f.test.filtered, aes(x=f_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(f_ratio)), color="red", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(0, 5)) +
+  theme_classic(base_size = 20) +
+  xlab("Ratio of open chromatin variances\n(marine/freshwater)") +
+  ylab("Number of peaks")
+
+pdf(file = "plots/for_article/Suppl_scATAC_f_ratio_peaks_histogram_filtered_for_p_val.pdf")
+p_f_ratio_blood
+dev.off()
+p_f_ratio_blood
+```
+
+
+```{r}
+pdf(file = "plots/for_article/scATAC_f_ratio_peaks_unfiltered_for_p_val_histogram.pdf")
+saline_vs_freshwater_varience_table %>% 
+  dplyr::filter(f_ratio != Inf) %>% 
+  rownames_to_column(var = "peak") %>% ggplot( aes(x=f_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(f_ratio)), color="red", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(0, 5)) +
+  theme_classic(base_size = 20) +
+  xlab("Ratio of open chromatin variances\n(marine/freshwater)") +
+  ylab("Number of peaks") 
+dev.off()
+saline_vs_freshwater_varience_table %>% 
+  dplyr::filter(f_ratio != Inf) %>% 
+  rownames_to_column(var = "peak") %>% ggplot( aes(x=f_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(f_ratio)), color="red", linetype="dashed", size=1) +
+    # geom_vline(aes(xintercept=mean(f_ratio)), color="blue", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(0, 5)) +
+  theme_classic(base_size = 20) +
+  xlab("Ratio of open chromatin variances\n(marine/freshwater)") +
+  ylab("Number of peaks")
+```
+
+
+
+
+
