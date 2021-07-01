@@ -1,0 +1,44 @@
+---
+title: "scRNA testing clustering and cell type indentification"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+# library(Signac)
+library(Seurat)
+# library(GenomeInfoDb)
+# library(GenomicRanges)
+set.seed(42)
+```
+
+
+
+```{r}
+load(file = "data/rna.integrated.filtered.after.clustering.obj.RData")
+rna.integrated.cluster.rest <- subset(rna.integrated, idents = c(1,2))
+rna.integrated.cluster.rest <- FindNeighbors(rna.integrated.cluster.rest, dims = 1:15)
+rna.integrated.cluster.rest  <- FindClusters(rna.integrated.cluster.rest, resolution = 0.15)
+rna.integrated.cluster.rest <- RunUMAP(rna.integrated.cluster.rest, dims = 1:15)
+# rna.integrated.cluster.rest <- FindClusters(rna.integrated.cluster.rest, resolution = 0.15)
+DimPlot(rna.integrated.cluster.rest, reduction = "umap")
+```
+
+```{r fig.width=12, fig.height=9}
+VlnPlot(object = rna.integrated.cluster.rest,
+  features = c("atp1b4", "atp1b1a", "atp1b1b", "atp1b3a", "atp1b2b", "atp1a1a.2", "atp1a2a"  ), 
+  # assay = "RNA",
+  same.y.lims = TRUE
+  ) + DimPlot(rna.integrated.cluster.rest, label = TRUE) 
+  # VlnPlot(object = rna.integrated.cluster.rest,
+  # features = c("HBE1"), 
+  # assay = "RNA", 
+  # same.y.lims = TRUE
+  # )[[1]] + labs(title = "HBE1 as marker of blood")
+```
+

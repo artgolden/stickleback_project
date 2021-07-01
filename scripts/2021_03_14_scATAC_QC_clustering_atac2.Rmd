@@ -210,4 +210,3 @@ save(atac2_heavy_filtering, file = "data/scATAC/atac2_heavy_filtering_obj_qc_clu
 ```{r}
 saveRDS(atac2_heavy_filtering, file = "data/scATAC/atac2_heavy_filtering_obj_qc_clusters.rds")
 ```
-
