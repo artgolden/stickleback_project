@@ -295,8 +295,8 @@ suppressWarnings(plot_gene_distribution(sample_name = "saline_1", sample_obj = a
 ```{r}
 rm(atac1_with_rna, atac2_with_rna, atac3_with_rna, atac4_with_rna)
 ```
-
-# F-ratio histogram scATAC
+  
+# F-ratio histogram scATAC 
 
 
 ```{r}
@@ -313,12 +313,13 @@ coverage_imbalance_ratio <- mean_freshwater_counts_per_cell/mean_saline_counts_p
 
 #trying more memory efficient method by working directly on the internal vectors of the dgCMatrix
 require(scuttle)
-combined_saline_counts <- combined@assays[["ATAC"]]@counts[,1:saline_length]
-combined_saline_downsampled <- downsampleMatrix(combined_saline_counts, prop = coverage_imbalance_ratio, bycol=TRUE)
+combined_saline_counts <- combined@assays[["ATAC"]]@counts[,1:saline_length] # USING NORMALIZED DATA INSTEAD OF RAW COUNTS 
+combined_saline_downsampled <- downsampleMatrix(combined_saline_counts, prop = coverage_imbalance_ratio, bycol=TRUE) 
 # This one workes super efficiently!
 
 comb_counts_matrix <- cbind(
-  combined_saline_downsampled,
+  combined_saline_downsampled, 
+  # combined_saline_counts, 
   combined@assays[["ATAC"]]@counts[,-(1:saline_length)]
 )
 # save(comb_counts_matrix, file = "data/scATAC/combined_downsampled_counts_matrix.Rdata")
@@ -346,13 +347,16 @@ l_freshwater = num_saline_cells + 1
 r_freshwater = ncol(comb_counts_matrix)
 
 
-output <- apply(comb_counts_matrix, 1, function(row){
+atac_output <- apply(comb_counts_matrix, 1, function(row){
   # message(paste0("row = ", row))
   x <- row[1:r_saline]
-  x <- x[ !is.na(x)]
+  x <- x[ is.finite(x) & x > 0]
   y <- row[l_freshwater:r_freshwater]
-  y <- y[ !is.na(y)]
-  if(length(x) > 20 & length(y) > 20){
+  y <- y[ is.finite(y) & y > 0]
+  if(length(x) > 10 & length(y) > 10){
+    # m <- min(length(x),length(y)) # ADDED EQUALIZATION OF SAMPLE SIZE FOR VARIANCE TESTING
+    # x <- sample(x, size = m)
+    # y <- sample(y, size = m)
     saline_var <- var(x)
     freshwater_var <- var(y)
     f.test.res <- var.test(x, y)
@@ -363,7 +367,7 @@ output <- apply(comb_counts_matrix, 1, function(row){
   
   # return(data.frame(test = sum(row[1:saline_right_boundary]), test.l.1 = length(row[1:saline_right_boundary]), test.l.2 = length(row[freshwater_left_boundary:freshwater_right_boundary])))
 })
-saline_vs_freshwater_varience_table <- do.call(rbind,output)
+saline_vs_freshwater_varience_table <- do.call(rbind,atac_output)
 saline_vs_freshwater_varience_table %>% 
   dplyr::filter(p_val < 0.05 & f_ratio > 0 & f_ratio != Inf & p_val != 0) %>% 
   rownames_to_column(var = "peak") -> saline_vs_freshwater_varience_table_filtered_downsampled
@@ -388,36 +392,8 @@ saline_vs_freshwater_varience_table_filtered_downsampled_annotated <- inner_join
 ```
 
 ```{r}
-f.test.filtered <- saline_vs_freshwater_varience_table_filtered_downsampled_annotated
-p_f_ratio_blood <- ggplot(f.test.filtered, aes(x=f_ratio))+
-  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
-  geom_vline(aes(xintercept=median(f_ratio)), color="red", linetype="dashed", size=1) +
-  coord_cartesian(xlim = c(0, 5)) +
-  theme_classic(base_size = 20) +
-  xlab("Ratio of open chromatin variances\n(marine/freshwater)") +
-  ylab("Number of peaks")
-
-pdf(file = "plots/for_article/Suppl_scATAC_f_ratio_peaks_histogram_filtered_for_p_val.pdf")
-p_f_ratio_blood
-dev.off()
-p_f_ratio_blood
-```
-
-
-```{r}
-pdf(file = "plots/for_article/scATAC_f_ratio_peaks_unfiltered_for_p_val_histogram.pdf")
 saline_vs_freshwater_varience_table %>% 
-  dplyr::filter(f_ratio != Inf) %>% 
-  rownames_to_column(var = "peak") %>% ggplot( aes(x=f_ratio))+
-  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
-  geom_vline(aes(xintercept=median(f_ratio)), color="red", linetype="dashed", size=1) +
-  coord_cartesian(xlim = c(0, 5)) +
-  theme_classic(base_size = 20) +
-  xlab("Ratio of open chromatin variances\n(marine/freshwater)") +
-  ylab("Number of peaks") 
-dev.off()
-saline_vs_freshwater_varience_table %>% 
-  dplyr::filter(f_ratio != Inf) %>% 
+  dplyr::filter(is.finite(f_ratio), f_ratio > 0) %>% 
   rownames_to_column(var = "peak") %>% ggplot( aes(x=f_ratio))+
   geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
   geom_vline(aes(xintercept=median(f_ratio)), color="red", linetype="dashed", size=1) +
@@ -425,10 +401,12 @@ saline_vs_freshwater_varience_table %>%
   coord_cartesian(xlim = c(0, 5)) +
   theme_classic(base_size = 20) +
   xlab("Ratio of open chromatin variances\n(marine/freshwater)") +
-  ylab("Number of peaks")
+  ylab("Number of peaks") -> p6
+
+pdf(file = "plots/for_article/scATAC_f_ratio_peaks_histogram_unfiltered.pdf")
+p6
+dev.off()
+p6
 ```
-
-
-
 
 

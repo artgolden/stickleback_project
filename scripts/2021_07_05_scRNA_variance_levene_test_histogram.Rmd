@@ -1,0 +1,265 @@
+---
+title: "Variance-ratio histogram for scRNA data testing Levene’s test"
+levene_output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+library(Seurat)
+set.seed(42)
+```
+
+
+```{r}
+# TODO:
+# - 
+# - 
+# - 
+# - 
+# - 
+```
+
+```{r}
+
+```
+
+```{r subsetting_blood_for_each_sample_and_HVGs}
+load(file = "data/rna.integrated.filtered.after.clustering.obj.RData")
+rna.integrated.cluster.blood <- subset(rna.integrated, idents = 0)
+blood_cells_ids <- rna.integrated.cluster.blood@assays[["RNA"]]@counts@Dimnames[[2]]
+# blood_cells_ids <- paste(blood_cells_ids, rep("-1", length(blood_cells_ids)), sep = "") 
+
+
+stickleback.rna.comb <- readRDS(file = "data/stickleback.rna.seurat.samples.PURE_ENSEMBLE.rds")
+rna.list <- SplitObject(stickleback.rna.comb, split.by = "orig.ident")
+vst.list <- data.frame()
+vst_one <- data.frame()
+for (i in 1:length(rna.list)) {
+    # cells_to_keep <- gsub("-1", "", rna.list[[i]]@assays[["RNA"]]@counts@Dimnames[[2]])
+    cells_to_keep <- rna.list[[i]]@assays[["RNA"]]@counts@Dimnames[[2]]
+    cells_to_keep <- subset(cells_to_keep, cells_to_keep %in% blood_cells_ids)
+    rna.list[[i]] <- subset(rna.list[[i]], cells = cells_to_keep)
+    rna.list[[i]] <- NormalizeData(rna.list[[i]], verbose = FALSE)
+    rna.list[[i]] <- FindVariableFeatures(rna.list[[i]], selection.method = "vst", 
+        nfeatures = 2000, verbose = FALSE)
+    tmp.frame <- data.frame(sample_vst = rna.list[[i]]@assays[["RNA"]]@meta.features[["vst.variance.standardized"]],
+                            sample_ids = rna.list[[i]]@assays[["RNA"]]@counts@Dimnames[[1]])
+    tmp.frame <- subset(tmp.frame, sample_ids %in% rna.list[[i]]@assays[["RNA"]]@var.features)
+    tmp.frame <- tmp.frame[order(-tmp.frame$sample_vst),]
+    tmp.frame <- mutate(tmp.frame, ID = row_number())
+    tmp.frame$sample <- paste0("sample_", i)
+    if(length(vst_one) == 0){
+      
+      vst_one <- tmp.frame
+    }
+    else{
+      vst_one <- rbind(vst_one, tmp.frame)
+    }
+    tmp.frame$sample <- NULL
+    
+    colrenames <- c(paste0("sample_", i, "_variance_std"), paste0("sample_", i, "_ids"), "ID")
+    colnames(tmp.frame) <- colrenames
+    if(length(vst.list) == 0){
+      vst.list <- tmp.frame
+    }
+    else{
+      vst.list <- merge(vst.list, tmp.frame, by = "ID")
+    }
+}
+# write.table(vst.list, file = "data/top_2000_HVGs_for_each_sample.tsv", sep = "\t")
+# head(vst.list, 50)
+```
+
+```{r}
+hvg_union <- unique(c(vst.list$sample_1_ids,
+               vst.list$sample_2_ids,
+               vst.list$sample_3_ids,
+               vst.list$sample_4_ids))
+
+hvg_counts_sample_1 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.1"]]@assays[["RNA"]]@counts[rownames(rna.list[["stickleback.sample.1"]]@assays[["RNA"]]@data) %in% hvg_union,]))
+hvg_counts_sample_2 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.2"]]@assays[["RNA"]]@counts[rownames(rna.list[["stickleback.sample.2"]]@assays[["RNA"]]@data) %in% hvg_union,]))
+hvg_counts_sample_3 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.3"]]@assays[["RNA"]]@counts[rownames(rna.list[["stickleback.sample.3"]]@assays[["RNA"]]@data) %in% hvg_union,]))
+hvg_counts_sample_4 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.4"]]@assays[["RNA"]]@counts[rownames(rna.list[["stickleback.sample.4"]]@assays[["RNA"]]@data) %in% hvg_union,]))
+
+hvg_counts_saline <- merge(hvg_counts_sample_1, hvg_counts_sample_2, by="rowname")
+hvg_counts_freshwater <- merge(hvg_counts_sample_3, hvg_counts_sample_4, by="rowname")
+```
+
+```{r}
+require(car)
+hvg_counts_all <- merge(hvg_counts_saline, hvg_counts_freshwater, by="rowname")
+# saveRDS(hvg_counts_all, file = "testing/hvg_counts_scRNA_for_F_test.rds")
+
+saline_right_boundary <- length(hvg_counts_saline) - 1
+freshwater_left_boundary <- saline_right_boundary + 1 - 1
+freshwater_right_boundary <- saline_right_boundary + length(hvg_counts_freshwater) - 1 - 1
+
+levene_output <- apply(hvg_counts_all[,2:freshwater_right_boundary], 1, function(row){
+  x <- row[1:saline_right_boundary]
+  x <- x[x != 0 & is.finite(x)]
+  y <- row[freshwater_left_boundary:(freshwater_right_boundary)]
+  y <- y[y != 0 & is.finite(y)]
+  if(length(x) > 10 & length(y) > 10){
+    # f.test.res <- var.test(x, y) # CHANGED Levene-test TO LEVENE's TEST
+    saline_var <- var(x)
+    freshwater_var <- var(y)
+    m <- min(length(x),length(y))
+    df <- data.frame(value = c(sample(y, size = m), sample(x, size = m)),
+                 salinity = as.factor(c(rep("freshwater", m), rep("saline",m))))
+    lev_test <- car::leveneTest(data = df, value ~ salinity)
+    # break
+    return(data.frame(levene_ratio = lev_test$`F value`[1], 
+                      p_val = lev_test$`Pr(>F)`[1], 
+                      saline_var = saline_var, 
+                      freshwater_var = freshwater_var, 
+                      x = paste(x, collapse=", "),
+                      y = paste(x, collapse=", "))
+  }else{
+    return(data.frame(levene_ratio = NA, p_val = NA, saline_var = NA, freshwater_var = NA, x = NA, y = NA))
+  }
+})
+levene_test_frame <- do.call(rbind,levene_output)
+rownames(levene_test_frame) <- hvg_counts_all$rowname
+
+```
+
+```{r}
+row <- as.numeric(as.vector(hvg_counts_all[1,2:freshwater_right_boundary]))
+  x <- row[1:saline_right_boundary]
+  x <- x[x != 0 & is.finite(x)]
+  y <- row[freshwater_left_boundary:(freshwater_right_boundary)]
+  y <- y[y != 0 & is.finite(y)]
+  if(length(x) > 10 & length(y) > 10){
+    # f.test.res <- var.test(x, y)
+    # if(is.finite(f.test.res$estimate) & f.test.res$estimate == 0){
+    #   f.test.res$estimate = 1 # ========================================================== ARTIFICIALLY CHANGING ZEROES TO 1
+    # }
+    # print(x)
+    # print(y)
+    m <- min(length(x),length(y))
+    df <- data.frame(value = c(sample(y, size = m), sample(x, size = m)),
+                 salinity = as.factor(c(rep("freshwater", m), rep("saline",m))))
+    lev_test <- car::leveneTest(data = df, value ~ salinity)
+    print(df)
+    print(df$salinity)
+    # lev_test <- car::leveneTest(data = df, value ~ salinity)
+    break
+  }
+```
+
+### Levene-test for dispersion for blood cluster cells separately
+
+```{r f_test_for_blood_cluster}
+levene_test_filtered.blood <- subset(levene_test_frame, p_val < 0.05 & levene_ratio > 0 & levene_ratio != Inf & p_val != 0)
+# head(levene_test_filtered, 10)
+# write.table(levene_test_filtered.blood, file = "data/levene_test_filtered.blood.tsv", sep = '\t')
+levene_test_filtered.blood
+```
+
+### Levene-test histogram for blood cluster
+```{r}
+# levene_test_filtered.blood <- read.table(file = "data/levene_test_filtered.blood.tsv", sep = "\t", header = TRUE)
+ levene_test_frame %>% 
+  filter(is.finite(levene_ratio), p_val < 0.05, p_val > 0) %>% 
+  # transmute(levene_ratio = log2(levene_ratio)) %>% 
+  ggplot(aes(x=levene_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(levene_ratio)), color="red", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(0, 10)) +
+  theme_classic(base_size = 20) +
+  xlab("Levene-ratio") +
+  ylab("Number of genes") -> p_levene_ratio_blood_filtered
+  # labs(title = "marine/freshwater variance in genes\n in scRNA data with 5000 HVG per sample") 
+
+# svg(filename = "plots/for_article/f_1f_levene_ratio_histogram_for_blood_cluster.svg")
+# print(p_levene_ratio_blood)
+# dev.off()
+p_levene_ratio_blood_filtered
+```
+
+### Levene-test histogram for blood cluster NO FILTERING
+
+```{r}
+# levene_test_filtered.blood <- read.table(file = "data/levene_test_filtered.blood.tsv", sep = "\t", header = TRUE)
+ levene_test_frame %>% 
+  filter(is.finite(levene_ratio)) %>% 
+  # transmute(levene_ratio = log2(levene_ratio)) %>% 
+  ggplot(aes(x=levene_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(levene_ratio)), color="red", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(0, 5)) +
+  theme_classic(base_size = 20) +
+  xlab("Levene-ratio") +
+  ylab("Number of genes") -> p_levene_ratio_blood
+  # labs(title = "marine/freshwater variance in genes\n in scRNA data with 5000 HVG per sample") 
+
+# svg(filename = "plots/for_article/f_1f_levene_ratio_histogram_for_blood_cluster.svg")
+# print(p_levene_ratio_blood)
+# dev.off()
+p_levene_ratio_blood
+```
+
+```{r}
+# levene_test_filtered.blood <- read.table(file = "data/levene_test_filtered.blood.tsv", sep = "\t", header = TRUE)
+m <- as.character(median(levene_test_frame$levene_ratio[is.finite(levene_test_frame$levene_ratio)]))
+ levene_test_frame %>% 
+  filter(is.finite(levene_ratio)) %>% 
+  # transmute(levene_ratio = log2(levene_ratio)) %>% 
+  ggplot(aes(x=levene_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(levene_ratio)), color="red", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(0, 5)) +
+  theme_classic(base_size = 20) +
+  annotate("text", x = 2, y = 400, label = m) +
+  xlab("Levene-ratio") +
+  ylab("Number of genes") +
+  labs(title = "Levene's test without filtration")
+ 
+png(filename = "plots/scRNA_levene_hist_unfiltered.png")
+ levene_test_frame %>% 
+  filter(is.finite(levene_ratio)) %>% 
+  # transmute(levene_ratio = log2(levene_ratio)) %>% 
+  ggplot(aes(x=levene_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(levene_ratio)), color="red", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(0, 5)) +
+  theme_classic(base_size = 20) +
+  annotate("text", x = 2, y = 400, label = m) +
+  xlab("Levene-ratio") +
+  ylab("Number of genes") +
+  labs(title = "Levene's test without filtration")
+dev.off()
+```
+
+```{r}
+# levene_test_filtered.blood <- read.table(file = "data/levene_test_filtered.blood.tsv", sep = "\t", header = TRUE)
+ levene_test_frame %>% 
+  filter(is.finite(levene_ratio), p_val < 0.05) %>% 
+  # transmute(levene_ratio = log2(levene_ratio)) %>% 
+  ggplot(aes(x=levene_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(levene_ratio)), color="red", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(0, 10)) +
+  theme_classic(base_size = 20) +
+  xlab("Levene-ratio") +
+  ylab("Number of genes") +
+  labs(title = "Levene's test filtered by p-val")
+png(filename = "plots/scRNA_levene_hist_filtered_p_val.png")
+ levene_test_frame %>% 
+  filter(is.finite(levene_ratio), p_val < 0.05) %>% 
+  # transmute(levene_ratio = log2(levene_ratio)) %>% 
+  ggplot(aes(x=levene_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(levene_ratio)), color="red", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(0, 10)) +
+  theme_classic(base_size = 20) +
+  xlab("Levene-ratio") +
+  ylab("Number of genes") +
+  labs(title = "Levene's test filtered by p-val")
+dev.off()
+```

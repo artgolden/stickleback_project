@@ -136,11 +136,17 @@ freshwater_right_boundary <- saline_right_boundary + length(hvg_counts_freshwate
 output <- apply(hvg_counts_all[,2:freshwater_right_boundary], 1, function(row){
   # message(paste0("row = ", row))
   x <- row[1:saline_right_boundary]
-  x <- x[x != 0]
+  x <- x[x > 0] 
   y <- row[freshwater_left_boundary:freshwater_right_boundary]
-  y <- y[y != 0]
+  y <- y[y > 0]
   if(length(x) > 10 & length(y) > 10){
     f.test.res <- var.test(x, y)
+    # if(f.test.res$p.value == 0){
+    #   print(x[x != 0])
+    #   print("=============")
+    #   print(y[y != 0])
+    #   break
+    # }
     return(data.frame(f_ratio = f.test.res$estimate, p_val = f.test.res$p.value))
   }else{
     return(data.frame(f_ratio = NA, p_val = NA))

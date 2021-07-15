@@ -10,8 +10,7 @@ knitr::opts_chunk$set(echo=FALSE, message = FALSE)
 ```
 
 ```{r, results = 'hide'}
-library(ggplot2)
-library(dplyr)
+library(tidyverse)
 library(Seurat)
 ```
 
@@ -64,12 +63,62 @@ rna.integrated.cluster.rest <- FindClusters(rna.integrated.cluster.rest, resolut
 svg(filename = "plots/for_article/S_f_2_umap_rest_high_res_015.svg")
 DimPlot(rna.integrated.cluster.rest, reduction = "umap")
 dev.off()
-DimPlot(rna.integrated.cluster.rest, reduction = "umap")
+DimPlot(rna.integrated.cluster.rest, reduction = "umap") -> rest_umap
+rest_umap
 ```
 
 ```{r}
 paste0("Number of cells in the non-blood data: ", dim(rna.integrated.cluster.rest@assays[["RNA"]]@counts)[[2]])
 ```
+
+### Heatmap rest
+
+```{r fig.width=12, fig.height=11}
+integrated.saline.rest.markers <- read_csv(file = "data/stickleback.saline.rest.clusters.csv")
+integrated.saline.rest.markers %>%
+    group_by(cluster) %>%
+    top_n(n = 15, wt = avg_logFC) -> top10
+DoHeatmap(rna.integrated.cluster.rest, features = top10$gene) + NoLegend() -> heatmap_rest
+pdf(file = "plots/for_article/scRNA_rest_heatmap_markers.pdf", height = 11)
+heatmap_rest
+dev.off()
+heatmap_rest
+```
+
+```{r fig.width=12, fig.height=11}
+integrated.cluster.rest.markers <- FindAllMarkers(rna.integrated.cluster.rest, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.15)
+integrated.cluster.rest.markers %>%
+    group_by(cluster) %>%
+    top_n(n = 15, wt = avg_log2FC) -> top15
+avg_integrated_rest <- AverageExpression(object = rna.integrated.cluster.rest)[[2]]
+to_heatmap_rest <- subset(avg_integrated_rest, rownames(avg_integrated_rest) %in% top15$gene)
+# to_heatmap_rest <- to_heatmap_rest[rownames(to_heatmap_rest) != "hbae5",]
+colnames(to_heatmap_rest) <- c("Cluster 0", "Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4", "Cluster 5", "Cluster 6")
+n = 15
+rows_annot <- top15[,c("gene", "cluster")]
+rows_annot$cl <- "Cluster"
+rows_annot <- as.data.frame(unite(rows_annot, "cluster", c("cl", "cluster"), sep = " "))
+rownames(rows_annot) <- rows_annot$gene
+rows_annot$gene <- NULL
+log2_to_heatmap_rest <- log2(to_heatmap_rest)
+log2_to_heatmap_rest[which(!is.finite(log2_to_heatmap_rest))] <- 0
+log2_to_heatmap_rest <- log2_to_heatmap_rest[top15$gene,]
+breakpoints <- seq(-10, 10, by = 1)
+cols <- colorRampPalette(RColorBrewer::brewer.pal(n = 9, name = "PuBu"))(length(breakpoints))
+pheatmap::pheatmap(log2_to_heatmap_rest, 
+                   cluster_cols = FALSE, 
+                   cluster_rows = FALSE, 
+                   annotation_row = rows_annot,
+                   breaks = breakpoints,
+                   color = cols)-> heatmap_rest_avg
+pdf(file = "plots/for_article/scRNA_rest_avg_heatmap_markers_6_clusters.pdf", height = 13)
+heatmap_rest_avg
+dev.off()
+```
+
+
+
+
 
 ### Fig. 1d. Correlation of marine-freshwater expression divergence between bulk RNA-seq and averaged snRNA-seq datasets. 
 
@@ -421,4 +470,7 @@ p_f_ratio_blood <- ggplot(f.test.frame, aes(x=f_ratio))+
 # dev.off()
 p_f_ratio_blood
 ```
+
+
+
 

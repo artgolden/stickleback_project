@@ -135,10 +135,10 @@ output <- apply(comb_counts_matrix, 1, function(row){
   
   # return(data.frame(test = sum(row[1:saline_right_boundary]), test.l.1 = length(row[1:saline_right_boundary]), test.l.2 = length(row[freshwater_left_boundary:freshwater_right_boundary])))
 })
-saline_vs_freshwater_varience_table <- do.call(rbind,output)
-saline_vs_freshwater_varience_table %>% 
+saline_vs_freshwater_varience_table_blood <- do.call(rbind,output)
+saline_vs_freshwater_varience_table_blood %>% 
   dplyr::filter(p_val < 0.05 & f_ratio > 0 & f_ratio != Inf & p_val != 0) %>% 
-  rownames_to_column(var = "peak") -> saline_vs_freshwater_varience_table_filtered_downsampled
+  rownames_to_column(var = "peak") -> saline_vs_freshwater_varience_table_blood_blood_filtered_downsampled
 
 load(file = "data/scATAC/ga_granges_annotation.RData")
 annotations <- ga_tx_merged
@@ -154,13 +154,29 @@ peaks_in_combined_obj_annotated <- ClosestFeature(
   regions = StringToGRanges(rownames(combined_blood), sep = c("-", "-"))
 )
 
-saline_vs_freshwater_varience_table_filtered_downsampled_annotated <- inner_join(saline_vs_freshwater_varience_table_filtered_downsampled, peaks_in_combined_obj_annotated, by = c("peak" = "query_region"))
+saline_vs_freshwater_varience_table_blood_blood_filtered_downsampled_annotated <- inner_join(saline_vs_freshwater_varience_table_blood_blood_filtered_downsampled, peaks_in_combined_obj_annotated, by = c("peak" = "query_region"))
 
-write_csv(saline_vs_freshwater_varience_table_filtered_downsampled_annotated, file = "data/scATAC/saline_vs_freshwater_BLOOD_varience_table_on_balanced_matrix_based_on_peaks_height_filtered.csv")
+write_csv(saline_vs_freshwater_varience_table_blood_blood_filtered_downsampled_annotated, file = "data/scATAC/saline_vs_freshwater_BLOOD_varience_table_on_balanced_matrix_based_on_peaks_height_filtered.csv")
 ```
 
+
+
 ```{r rmean_s_f_after_downsampling}
-# paste0("AFTER downsampling, mean varience difference ratio: ", mean(saline_vs_freshwater_varience_table_filtered_downsampled$f_ratio))
+saline_vs_freshwater_varience_table_blood %>% 
+  dplyr::filter(is.finite(f_ratio), f_ratio > 0) %>% 
+  rownames_to_column(var = "peak") %>% ggplot( aes(x=f_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(f_ratio)), color="red", linetype="dashed", size=1) +
+    # geom_vline(aes(xintercept=mean(f_ratio)), color="blue", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(0, 5)) +
+  theme_classic(base_size = 20) +
+  xlab("Ratio of open chromatin variances\n(marine/freshwater)") +
+  ylab("Number of peaks") -> p7
+p7
+pdf(file = "plots/for_article/Supple_scATAC_f_ratio_peaks_histogram_unfiltered_BLOOD_only.pdf")
+p7
+dev.off()
+# paste0("AFTER downsampling, mean varience difference ratio: ", mean(saline_vs_freshwater_varience_table_blood_blood_filtered_downsampled$f_ratio))
 ```
 
 
@@ -402,5 +418,4 @@ bootstraps_combined %>%
   xlab("Divergence Island ID")
 dev.off()
 ```
-
 

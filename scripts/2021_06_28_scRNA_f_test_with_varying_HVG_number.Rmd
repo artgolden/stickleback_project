@@ -81,10 +81,10 @@ hvg_union <- unique(c(vst.list$sample_1_ids,
                vst.list$sample_3_ids,
                vst.list$sample_4_ids))
 
-hvg_counts_sample_1 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.1"]]@assays[["RNA"]]@counts[rownames(rna.list[["stickleback.sample.1"]]@assays[["RNA"]]@counts) %in% hvg_union,]))
-hvg_counts_sample_2 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.2"]]@assays[["RNA"]]@counts[rownames(rna.list[["stickleback.sample.2"]]@assays[["RNA"]]@counts) %in% hvg_union,]))
-hvg_counts_sample_3 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.3"]]@assays[["RNA"]]@counts[rownames(rna.list[["stickleback.sample.3"]]@assays[["RNA"]]@counts) %in% hvg_union,]))
-hvg_counts_sample_4 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.4"]]@assays[["RNA"]]@counts[rownames(rna.list[["stickleback.sample.4"]]@assays[["RNA"]]@counts) %in% hvg_union,]))
+hvg_counts_sample_1 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.1"]]@assays[["RNA"]]@counts[rownames(rna.list[["stickleback.sample.1"]]@assays[["RNA"]]@data) %in% hvg_union,]))
+hvg_counts_sample_2 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.2"]]@assays[["RNA"]]@counts[rownames(rna.list[["stickleback.sample.2"]]@assays[["RNA"]]@data) %in% hvg_union,]))
+hvg_counts_sample_3 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.3"]]@assays[["RNA"]]@counts[rownames(rna.list[["stickleback.sample.3"]]@assays[["RNA"]]@data) %in% hvg_union,]))
+hvg_counts_sample_4 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.4"]]@assays[["RNA"]]@counts[rownames(rna.list[["stickleback.sample.4"]]@assays[["RNA"]]@data) %in% hvg_union,]))
 
 hvg_counts_saline <- merge(hvg_counts_sample_1, hvg_counts_sample_2, by="rowname")
 hvg_counts_freshwater <- merge(hvg_counts_sample_3, hvg_counts_sample_4, by="rowname")
@@ -100,23 +100,45 @@ freshwater_right_boundary <- saline_right_boundary + length(hvg_counts_freshwate
 
 output <- apply(hvg_counts_all[,2:freshwater_right_boundary], 1, function(row){
   x <- row[1:saline_right_boundary]
-  # x <- x[x != 0]
+  x <- x[x != 0 & is.finite(x)]
   y <- row[freshwater_left_boundary:(freshwater_right_boundary)]
-  # y <- y[y != 0]
+  y <- y[y != 0 & is.finite(y)]
   if(length(x) > 10 & length(y) > 10){
+    saline_var <- var(x)
+    freshwater_var <- var(y)
     f.test.res <- var.test(x, y)
     # if(is.finite(f.test.res$estimate) & f.test.res$estimate == 0){
     #   f.test.res$estimate = 1 # ========================================================== ARTIFICIALLY CHANGING ZEROES TO 1
     # }
-    return(data.frame(f_ratio = f.test.res$estimate, p_val = f.test.res$p.value))
+    return(data.frame(f_ratio = f.test.res$estimate, p_val = f.test.res$p.value, saline_var = saline_var, freshwater_var = freshwater_var))
   }else{
-    return(data.frame(f_ratio = NA, p_val = NA))
+    return(data.frame(f_ratio = NA, p_val = NA, saline_var = NA, freshwater_var = NA))
   }
 })
 f.test.frame <- do.call(rbind,output)
 rownames(f.test.frame) <- hvg_counts_all$rowname
 
 ```
+
+```{r}
+# row <- as.numeric(as.vector(hvg_counts_all[1,2:freshwater_right_boundary]))
+#   # message(paste0("row = ", row))
+#   x <- row[1:saline_right_boundary]
+#   # x <- x[is.finite(x)] # ================= removed filtration of zeros
+#   y <- row[freshwater_left_boundary:freshwater_right_boundary]
+#   # y <- y[is.finite(y)]
+#   if(length(x) > 10 & length(y) > 10){
+#     f.test.res <- var.test(x, y)
+#     if(f.test.res$p.value == 0){
+#       print(x[x != 0])
+#       print("=============")
+#       print(y[y != 0])
+#       break
+#     }
+#   }
+```
+
+
 
 ### F-test for dispersion for blood cluster cells separately
 
@@ -170,7 +192,7 @@ p_f_ratio_blood
 ```{r}
 # f.test.filtered.blood <- read.table(file = "data/f.test.filtered.blood.tsv", sep = "\t", header = TRUE)
  f.test.frame %>% 
-  filter(is.finite(f_ratio)) %>% 
+  filter(is.finite(f_ratio), f_ratio > 0) %>% 
   # transmute(f_ratio = log2(f_ratio)) %>% 
   ggplot(aes(x=f_ratio))+
   geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
@@ -274,3 +296,78 @@ filtration: log2(mean_expression) > -10") -> p_f_ratio_blood
 p_f_ratio_blood
 ```
 
+# Testing box plotting
+
+## Direct variance comparison
+
+```{r}
+# hvg_counts_all <- merge(hvg_counts_saline, hvg_counts_freshwater, by="rowname")
+# # saveRDS(hvg_counts_all, file = "testing/hvg_counts_scRNA_for_F_test.rds")
+# 
+# saline_right_boundary <- length(hvg_counts_saline) - 1
+# freshwater_left_boundary <- saline_right_boundary + 1 - 1
+# freshwater_right_boundary <- saline_right_boundary + length(hvg_counts_freshwater) - 1 - 1
+# 
+# output <- apply(hvg_counts_all[,2:freshwater_right_boundary], 1, function(row){
+#   x <- row[1:saline_right_boundary]
+#   x <- x[x != 0 & is.finite(x)]
+#   y <- row[freshwater_left_boundary:(freshwater_right_boundary)]
+#   y <- y[y != 0 & is.finite(y)]
+#   if(length(x) > 10 & length(y) > 10){
+#     return(data.frame(saline_var = var(x), freshwater_var = var(y)))
+#   }else{
+#     return(data.frame(saline_var = NA, freshwater_var = NA))
+#   }
+# })
+# var.test.frame <- do.call(rbind,output)
+# rownames(var.test.frame) <- hvg_counts_all$rowname
+
+```
+
+
+```{r}
+ f.test.frame %>% 
+  pivot_longer(c("saline_var", "freshwater_var"), names_to = "salinity", values_to = "variance") %>%
+  ggplot(aes(x = salinity, y = variance)) +
+    geom_boxplot() +
+    scale_y_continuous(limits = c(0,0.15)) +
+    labs(title = "scRNA Direct variance comparison in saline and freshwater") -> p2
+png(filename = "plots/scRNA_direct_variance_comparison.png") 
+p2
+dev.off()
+p2
+```
+
+## Boxplots with division by F-ratio >< 1
+
+```{r}
+ f.test.frame %>% 
+  filter(is.finite(f_ratio)) -> f_test_frame_fininte 
+  f_test_frame_fininte$sign <- apply(f_test_frame_fininte, 1 , function(x){ifelse(x > 1, "saline", "freshwater")})["f_ratio",]
+  
+ f_test_frame_fininte %>% 
+   transform(f_ratio = abs(log2(f_ratio))) %>% 
+  ggplot(aes(x = sign, y = f_ratio)) +
+    geom_boxplot() +
+    scale_y_continuous(limits = c(0,3)) +
+    labs(title = "Fold change in f-ratio comparison in 
+         saline(f_ratio > 1) and freshwater(f_ratio < 1)")
+```
+
+
+```{r}
+ f.test.frame %>% 
+  filter(is.finite(f_ratio)) -> f_test_frame_fininte 
+  f_test_frame_fininte$sign <- apply(f_test_frame_fininte, 1 , function(x){ifelse(x > 1, "saline", "freshwater")})["f_ratio",]
+  
+ f_test_frame_fininte %>% 
+   transform(f_ratio = abs(log2(f_ratio))) %>% 
+   filter(p_val < 0.05, p_val > 0) %>% 
+  ggplot(aes(x = sign, y = f_ratio)) +
+    geom_boxplot() +
+    scale_y_continuous(limits = c(0,3)) +
+    ylab("log2(f_ratio)") +
+    labs(title = "Fold change in f-ratio comparison in 
+         saline(f_ratio > 1) and freshwater(f_ratio < 1)
+         Filtered: p_val < 0.05, p_val > 0")
+```
