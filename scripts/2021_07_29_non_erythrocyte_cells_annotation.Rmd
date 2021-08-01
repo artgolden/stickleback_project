@@ -1,0 +1,192 @@
+---
+title: "Testing scRNA non-erythrocyte cells annotation"
+output: html_notebook
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+library(Seurat)
+```
+
+```{r}
+load(file = "data/rna.integrated.filtered.after.clustering.obj.RData")
+rna.integrated.cluster.blood <- subset(rna.integrated, idents = 0)
+rna.integrated.cluster.rest <- subset(rna.integrated, idents = c(1,2))
+```
+
+```{r}
+rna.integrated.cluster.rest <- FindNeighbors(rna.integrated.cluster.rest, dims = 1:15)
+rna.integrated.cluster.rest  <- FindClusters(rna.integrated.cluster.rest, resolution = 0.15)
+rna.integrated.cluster.rest <- RunUMAP(rna.integrated.cluster.rest, dims = 1:15)
+
+rna.integrated.cluster.rest <- FindClusters(rna.integrated.cluster.rest, resolution = 0.3)
+
+
+```
+
+```{r}
+svg(filename = "plots/for_article/Suppl_scRNA_umap_rest_very_high_res_3.svg")
+DimPlot(rna.integrated.cluster.rest, reduction = "umap")
+dev.off()
+DimPlot(rna.integrated.cluster.rest, reduction = "umap")
+```
+
+```{r fig.width=12, fig.height=23}
+integrated.cluster.rest.markers <- FindAllMarkers(rna.integrated.cluster.rest, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.15)
+integrated.cluster.rest.markers %>%
+    group_by(cluster) %>%
+    top_n(n = 20, wt = avg_log2FC) -> top15
+avg_integrated_rest <- AverageExpression(object = rna.integrated.cluster.rest)[[2]]
+to_heatmap_rest <- subset(avg_integrated_rest, rownames(avg_integrated_rest) %in% top15$gene)
+# to_heatmap_rest <- to_heatmap_rest[rownames(to_heatmap_rest) != "hbae5",]
+colnames(to_heatmap_rest) <- paste0("Cluster ", colnames(avg_integrated_rest))
+n = 20
+rows_annot <- top15[,c("gene", "cluster")]
+rows_annot$cl <- "Cluster"
+rows_annot <- as.data.frame(unite(rows_annot, "cluster", c("cl", "cluster"), sep = " "))
+rownames(rows_annot) <- make.unique(rows_annot$gene)
+rows_annot$gene <- NULL
+log2_to_heatmap_rest <- log2(to_heatmap_rest)
+log2_to_heatmap_rest[which(!is.finite(log2_to_heatmap_rest))] <- 0
+log2_to_heatmap_rest <- log2_to_heatmap_rest[top15$gene,]
+breakpoints <- seq(-10, 10, by = 1)
+cols <- colorRampPalette(RColorBrewer::brewer.pal(n = 9, name = "PuBu"))(length(breakpoints))
+pheatmap::pheatmap(log2_to_heatmap_rest, 
+                   cluster_cols = FALSE, 
+                   cluster_rows = FALSE, 
+                   annotation_row = rows_annot,
+                   breaks = breakpoints,
+                   color = cols)-> heatmap_rest_avg
+pdf(file = "plots/for_article/scRNA_rest_avg_heatmap_markers_many_9_clusters.pdf", height = 21)
+heatmap_rest_avg
+dev.off()
+
+```
+
+```{r fig.width=12, fig.height=23}
+# SORTING MARKER GENES BY P-value
+
+integrated.cluster.rest.markers_RNA <- FindAllMarkers(rna.integrated.cluster.rest, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.15, assay = "RNA")
+integrated.cluster.rest.markers_RNA %>%
+    group_by(cluster) %>%
+    # filter(avg_log2FC > 1) %>% 
+    top_n(n = 20, wt = avg_log2FC) -> top
+avg_integrated_rest <- AverageExpression(object = rna.integrated.cluster.rest, assays = "RNA")[[1]]
+to_heatmap_rest <- subset(avg_integrated_rest, rownames(avg_integrated_rest) %in% top$gene)
+# to_heatmap_rest <- to_heatmap_rest[rownames(to_heatmap_rest) != "hbae5",]
+colnames(to_heatmap_rest) <- paste0("Cluster ", colnames(avg_integrated_rest))
+n = 20
+rows_annot <- top[,c("gene", "cluster")]
+rows_annot$cl <- "Cluster"
+rows_annot <- as.data.frame(unite(rows_annot, "cluster", c("cl", "cluster"), sep = " "))
+rownames(rows_annot) <- make.unique(rows_annot$gene)
+rows_annot$gene <- NULL
+log2_to_heatmap_rest <- log2(to_heatmap_rest)
+log2_to_heatmap_rest[which(!is.finite(log2_to_heatmap_rest))] <- 0
+log2_to_heatmap_rest <- log2_to_heatmap_rest[top$gene,]
+breakpoints <- seq(-10, 10, by = 1)
+cols <- colorRampPalette(RColorBrewer::brewer.pal(n = 9, name = "PuBu"))(length(breakpoints))
+cols[10:12] <- "#FFFFFF"
+pheatmap::pheatmap(log2_to_heatmap_rest, 
+                   cluster_cols = FALSE, 
+                   cluster_rows = FALSE, 
+                   annotation_row = rows_annot,
+                   breaks = breakpoints,
+                   color = cols)-> heatmap_rest_avg
+pdf(file = "plots/for_article/scRNA_rest_avg_heatmap_markers_many_9_clusters_ASSAY_RNA.pdf", height = 21)
+heatmap_rest_avg
+dev.off()
+
+```
+
+```{r}
+# Intersecting rest markers with markers from paper https://www.sciencedirect.com/science/article/pii/S0012160619304919?via%3Dihub#appsec1
+# P-value sorted markers
+danio_paper_markers <- as.data.frame(readxl::read_xlsx("data/1-s2.0-S0012160619304919-mmc7.xlsx"))
+
+top_p_val_sorted$gene[top_p_val_sorted$gene %in% unlist(danio_paper_markers[-1,9:24])]
+```
+
+
+
+```{r fig.width=11, fig.height=9}
+VlnPlot(object = rna.integrated.cluster.rest,
+  features = c("rhcga", "slc4a1b", "ctsl.1", "ctsk", "irf8", "mpeg1.2"), 
+  assay = "RNA", 
+  same.y.lims = TRUE
+  )
+```
+
+```{r }
+VlnPlot(object = rna.integrated.cluster.rest,
+  features = c("rhcga"), 
+  assay = "integrated", 
+  same.y.lims = TRUE
+  ) | VlnPlot(object = rna.integrated.cluster.rest,
+  features = c("rhcga"), 
+  assay = "RNA", 
+  same.y.lims = TRUE
+  )
+```
+
+```{r fig.height=7, fig.width=9}
+VlnPlot(object = rna.integrated.cluster.rest,
+  features = c("arpc1b", "coro1a", "zgc:64051", "sh2d1ab", "tnfsf14", "sftpbb"), 
+  assay = "RNA", 
+  same.y.lims = TRUE
+  )
+```
+
+```{r fig.height=7, fig.width=12}
+VlnPlot(object = rna.integrated.cluster.rest,
+    features = top$gene[121:132], 
+  assay = "RNA", 
+  same.y.lims = TRUE
+  )
+```
+
+```{r fig.height=11, fig.width=12}
+VlnPlot(object = rna.integrated.cluster.rest,
+    features = top15$gene[121:140], 
+  assay = "RNA", 
+  same.y.lims = TRUE
+  )
+```
+
+
+
+
+```{r }
+# blood vessel endothelium from table: "f8", "vwf", "si:ch211-33e4.2", "ccm2l", "ecscr", "flt1", "tie1", "sele", "clec14a", "gpr182", "myct1b", "gata5", "myct1a", "edn2", "pecam1", "si:ch211-145b13.6", "mrc1a", "lyve1b", "sele", "stab2", "CU927890.1", "gpr182", "rasip1", "stab1", "tie1", "myct1a", "tek", "scarf1", "si:ch211-33e4.2", "myct1b", "flt4", "clec14a", "notchl", "myct1b", "flt1", "pecam1", "si:ch211-33e4.2", "tie1", "ecscr", "myct1a", "scarf1", "rasip1", "ccm2l", "ushbp1", "micall2a", "arhgef9b", "clec14a", "f2rl2"
+# any epidermis: "si:ch1073-80i24.3", "itgb3a", "msx2a", "col4a4", "CU469568.1", "cpz", "col5a3b", "lamb4", "si:ch211-241e1.3", "zgc:154006", "fgfbp1b", "olfm2b", "si:dkey-91f15.8", "myof", "col4a3", "wnt6b", "si:dkey-18p12.4", "itgb3a", "tlx1", "arhgef25b", "dkk1a", "def6c", "cyp26a1", "lrata", "adra1d", "col4a4", "si:ch211-213d14.2", "col4a3", "wnt6b", "adam28", "nkx2.7", "nkx2.3", "itih5", "bhlha9", "tspearb", "adamtsl7", "srpx2", "sp6", "glsl", "vcana", "msx2a", "hapln3", "hhipl2", "and3", "mxc", "dkk1a", "col4a3", "dlx2b", "shhb", "nkx3.3", "pitx1", "sp6", "shha", "foxa2", "ociad2", "inhbaa", "abi3b", "vgll4l", "pitx2", "nkx2.3", "afap1l1a", "frem2a", "tp63", "CABZ01024499.1", "zgc:136254", "adamtsl7", "zgc:173443", "si:ch211-167j6.4", "wnt5a", "bhlha9", "si:ch211-182p11.1", "mslna", "BX004816.1", "si:ch211-251f6.6", "and3", "si:ch73-181m17.1", "si:dkey-56e3.2", "sp6", "zgc:123217", "hhipl2", "si:ch211-76l23.4", "sod3b", "col17a1a", "plek2", "slc6a11a", "cxcl18a.1", "si:dkey-95h12.1", "si:dkey-119m7.8", "mmp30", "tkta", "cxl34b.11", "tnfsf10l4", "bgnb", "entpd3", "CABZ01068177.1", "BX855590.1", "zgc:100997", "ponzr4", "cdh26.2", "mxc", "CU459012.1", "si:ch211-153b23.4", "si:dkey-95h12.1", "ubap1la", "cers3a", "col28a1a", "si:ch211-241e1.3", "col17a1b", "si:ch211-264e16.1", "grk5", "jac10"
+# pdf(file = "plots/test/epithelium_markers_scRNA_rest.pdf", width = 27, height = 35)
+VlnPlot(object = rna.integrated.cluster.rest,
+  features = c("cdh31", "mmp9"), 
+  assay = "RNA", 
+  same.y.lims = TRUE
+  )
+# dev.off() 
+```
+
+
+```{r}
+new_cluster_labels <- c("leukocytes_1", "macrophages", "gill_integument", "low_quality", "neutrophils", "lymphocytes", "ionocytes", "epithelium", "leukocytes_2")
+names(new_cluster_labels) <- levels(rna.integrated.cluster.rest)
+rna.integrated.cluster.rest_annotated <- RenameIdents(rna.integrated.cluster.rest, new_cluster_labels)
+svg(filename = "plots/for_article/Suppl_scRNA_umap_rest_very_high_res_3_ANNOTATED.svg")
+DimPlot(rna.integrated.cluster.rest_annotated, reduction = "umap", label = TRUE, repel = TRUE)
+dev.off()
+DimPlot(rna.integrated.cluster.rest_annotated, reduction = "umap", label = TRUE, repel = TRUE)
+```
+
+
+```{r}
+saveRDS(rna.integrated.cluster.rest_annotated, file = "data/rna_integrated_cluster_rest_annotated.RData")
+```
+
