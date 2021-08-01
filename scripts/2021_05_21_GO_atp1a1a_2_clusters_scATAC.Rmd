@@ -170,4 +170,3 @@ dotplot(GO_13_vs_rest, showCategory = 30,
         title = "GO terms marker peaks for clusters 13  vs rest")
 dev.off()
 ```
-
