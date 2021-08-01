@@ -74,15 +74,15 @@ paste0("Number of cells in the non-blood data: ", dim(rna.integrated.cluster.res
 ### Heatmap rest
 
 ```{r fig.width=12, fig.height=11}
-integrated.saline.rest.markers <- read_csv(file = "data/stickleback.saline.rest.clusters.csv")
-integrated.saline.rest.markers %>%
-    group_by(cluster) %>%
-    top_n(n = 15, wt = avg_logFC) -> top10
-DoHeatmap(rna.integrated.cluster.rest, features = top10$gene) + NoLegend() -> heatmap_rest
-pdf(file = "plots/for_article/scRNA_rest_heatmap_markers.pdf", height = 11)
-heatmap_rest
-dev.off()
-heatmap_rest
+# integrated.saline.rest.markers <- read_csv(file = "data/stickleback.saline.rest.clusters.csv")
+# integrated.saline.rest.markers %>%
+#     group_by(cluster) %>%
+#     top_n(n = 15, wt = avg_logFC) -> top10
+# DoHeatmap(rna.integrated.cluster.rest, features = top10$gene) + NoLegend() -> heatmap_rest
+# pdf(file = "plots/for_article/scRNA_rest_heatmap_markers.pdf", height = 11)
+# heatmap_rest
+# dev.off()
+# heatmap_rest
 ```
 
 ```{r fig.width=12, fig.height=11}
@@ -116,6 +116,19 @@ heatmap_rest_avg
 dev.off()
 ```
 
+```{r}
+# Intersecting rest markers with markers from paper https://www.sciencedirect.com/science/article/pii/S0012160619304919?via%3Dihub#appsec1
+# TODO:
+# - import exel file
+# - get list of markers from the paper
+# - intersect with markers from non-erythrocyte cell clusters
+
+danio_paper_markers <- as.data.frame(readxl::read_xlsx("data/1-s2.0-S0012160619304919-mmc7.xlsx"))
+non_erythrocyte_cells_markers <- integrated.cluster.rest.markers %>%
+    group_by(cluster) %>%
+    top_n(n = 15, wt = avg_log2FC) -> non_erythrocyte_cells_markers_top15
+non_erythrocyte_cells_markers_top15$gene[non_erythrocyte_cells_markers_top15$gene %in% unlist(danio_paper_markers[-1,9:24])]
+```
 
 
 
@@ -470,7 +483,6 @@ p_f_ratio_blood <- ggplot(f.test.frame, aes(x=f_ratio))+
 # dev.off()
 p_f_ratio_blood
 ```
-
 
 
 
