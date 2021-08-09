@@ -6,6 +6,7 @@ scripts/*.nb.html
 vids/
 testing/
 plots/*
+scripts/tmp/*
 .Rhistory
 .RData
 *.RData
