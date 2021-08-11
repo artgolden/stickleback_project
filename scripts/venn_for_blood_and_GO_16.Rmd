@@ -101,7 +101,7 @@ stickleback_to_zebrafish_IDs <- function(stickleback_ensembl_ids, conversion_tab
 
 ```{r GO_enrichment_watertype_specific_HVGs}
 
-P_ADJUST_VALUE_CUTOFF = 0.1
+P_ADJUST_VALUE_CUTOFF = 0.2
 # GO enrichment for HVGs common for freshwater and saline
 saline_specific_HVGs <- stickleback_to_zebrafish_IDs(setdiff(intersect(vst.list$sample_1_ids,
                                                                        vst.list$sample_2_ids),
@@ -141,11 +141,11 @@ Adjusted p-value threshold = `r P_ADJUST_VALUE_CUTOFF`
 # Top of GO enrichment terms for oppositely changing genes between samples
 require(enrichplot)
 
-svg(filename = "plots/for_article/f_3a_GO_enrichment_waterspecific_HVGs_saline.svg")
+pdf(file = "plots/for_article/f_3a_GO_enrichment_waterspecific_HVGs_saline.pdf")
 dotplot(saline_GO, showCategory = 30,
         title = "GO terms, saline_GO")
 dev.off()
-svg(filename = "plots/for_article/f_3b_GO_enrichment_waterspecific_HVGs_freshwater.svg")
+pdf(file = "plots/for_article/f_3b_GO_enrichment_waterspecific_HVGs_freshwater.pdf")
 dotplot(freshwater_GO, showCategory = 30,
         title = "GO terms, freshwater_GO")
 dev.off()
@@ -198,10 +198,10 @@ freshwater_kegg <- enrichKEGG(freshwater_specific_HVGs_entrez,
 Adjusted p-value threshold = `r P_ADJUST_VALUE_CUTOFF_KEGG`
 
 ```{r kegg_plots_watertype_hvgs}
-svg(filename = "plots/for_article/f_3c_KEGG_enrichment_waterspecific_HVGs_freshwater.svg")
+pdf(file = "plots/for_article/f_3c_KEGG_enrichment_waterspecific_HVGs_saline.pdf")
 dotplot(saline_kegg,showCategory = 30,title = "KEGG terms, saline")
 dev.off()
-svg(filename = "plots/for_article/f_3d_GO_enrichment_waterspecific_HVGs_freshwater.svg")
+pdf(file = "plots/for_article/f_3d_KEGG_enrichment_waterspecific_HVGs_freshwater.pdf")
 dotplot(freshwater_kegg,showCategory = 30,title = "KEGG terms, freshwater")
 dev.off()
 dotplot(saline_kegg,showCategory = 30,title = "KEGG terms, saline")
