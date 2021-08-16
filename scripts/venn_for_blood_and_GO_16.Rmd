@@ -141,11 +141,11 @@ Adjusted p-value threshold = `r P_ADJUST_VALUE_CUTOFF`
 # Top of GO enrichment terms for oppositely changing genes between samples
 require(enrichplot)
 
-pdf(file = "plots/for_article/f_3a_GO_enrichment_waterspecific_HVGs_saline.pdf")
+pdf(file = "plots/for_article/Suppl_scRNA_GO_enrichment_waterspecific_HVGs_saline.pdf")
 dotplot(saline_GO, showCategory = 30,
         title = "GO terms, saline_GO")
 dev.off()
-pdf(file = "plots/for_article/f_3b_GO_enrichment_waterspecific_HVGs_freshwater.pdf")
+pdf(file = "plots/for_article/scRNA_GO_enrichment_waterspecific_HVGs_freshwater.pdf")
 dotplot(freshwater_GO, showCategory = 30,
         title = "GO terms, freshwater_GO")
 dev.off()
@@ -198,10 +198,10 @@ freshwater_kegg <- enrichKEGG(freshwater_specific_HVGs_entrez,
 Adjusted p-value threshold = `r P_ADJUST_VALUE_CUTOFF_KEGG`
 
 ```{r kegg_plots_watertype_hvgs}
-pdf(file = "plots/for_article/f_3c_KEGG_enrichment_waterspecific_HVGs_saline.pdf")
+pdf(file = "plots/for_article/Suppl_scRNA_KEGG_enrichment_waterspecific_HVGs_saline.pdf")
 dotplot(saline_kegg,showCategory = 30,title = "KEGG terms, saline")
 dev.off()
-pdf(file = "plots/for_article/f_3d_KEGG_enrichment_waterspecific_HVGs_freshwater.pdf")
+pdf(file = "plots/for_article/Suppl_scRNA_KEGG_enrichment_waterspecific_HVGs_freshwater.pdf")
 dotplot(freshwater_kegg,showCategory = 30,title = "KEGG terms, freshwater")
 dev.off()
 dotplot(saline_kegg,showCategory = 30,title = "KEGG terms, saline")
@@ -285,11 +285,11 @@ bottom_f_test_kegg <- enrichKEGG(f.test.bottom.entrez$entrezgene_id,
 ### GO for top and bottom `r NUMBER_OF_GENES_FROM_TOP_AND_BOTTOM` genes of the F-test dispersion table
 
 ```{r kegg_enrichment_plots_f_test}
-svg(filename = "plots/for_article/f_3e_KEGG_enrichment_top_HVGs_by_F_test.svg")
+pdf(file = "plots/for_article/Suppl_scRNA_KEGG_enrichment_top_HVGs_by_F_test.pdf")
 dotplot(top_f_test_kegg, showCategory = 30,
         title = "top KEGG pathways, top HVGs form F-test list")
 dev.off()
-svg(filename = "plots/for_article/f_3f_KEGG_enrichment_bottom_HVGs_by_F_test.svg")
+pdf(file = "plots/for_article/Suppl_scRNA_KEGG_enrichment_bottom_HVGs_by_F_test.pdf")
 dotplot(bottom_f_test_kegg, showCategory = 30,
         title = "top KEGG pathways, top HVGs form F-test list")
 dev.off()
