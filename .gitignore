@@ -14,5 +14,7 @@ scripts/tmp/*
 *.rds
 *.nb.html
 *.pdf
-
+.config/
+.local/
 .Rproj.user
+
