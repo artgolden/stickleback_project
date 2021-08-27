@@ -4,7 +4,7 @@ library(Seurat)
 library(future)
 
 
-setwd("/home/tema/work/skolkovo/fish_project/")
+setwd(rprojroot::find_rstudio_root_file())
 
 
 message("Loading Seurat object")
