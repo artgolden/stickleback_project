@@ -12,12 +12,41 @@ knitr::opts_chunk$set(echo=FALSE, message = FALSE)
 ```{r, results = 'hide'}
 library(tidyverse)
 library(Seurat)
+library(ggpubr)
+library(venn)
+library(clusterProfiler)
+library(biomaRt)
 ```
 
 ```{r}
 load(file = "data/rna.integrated.filtered.after.clustering.obj.RData")
 rna.integrated.cluster.blood <- subset(rna.integrated, idents = 0)
 rna.integrated.cluster.rest <- subset(rna.integrated, idents = c(1,2))
+```
+
+
+```{r}
+rna_qc_all_plot <- VlnPlot(rna.integrated, 
+        features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), 
+        ncol = 3, 
+        pt.size = 0.1, 
+        group.by = "orig.ident", 
+        assay = "RNA") 
+png(filename = "plots/for_article_png/Suppl_scRNA_all_samples_QC.png", 
+    res = 400, 
+    units = "in",
+    width = 13,
+    height = 11)
+print(rna_qc_all_plot)
+dev.off()
+png(filename = "plots/for_article/Suppl_scRNA_all_samples_QC.png", 
+    res = 400, 
+    units = "in",
+    width = 13,
+    height = 11)
+print(rna_qc_all_plot)
+dev.off()
+rna_qc_all_plot
 ```
 
 
@@ -43,7 +72,61 @@ rna.integrated.cluster.rest <- FindNeighbors(rna.integrated.cluster.rest, dims =
 rna.integrated.cluster.rest  <- FindClusters(rna.integrated.cluster.rest, resolution = 0.3)
 rna.integrated.cluster.rest <- RunUMAP(rna.integrated.cluster.rest, dims = 1:15)
 
-rna.integrated.cluster.rest <- FindClusters(rna.integrated.cluster.rest, resolution = 0.1)
+# rna.integrated.cluster.rest <- FindClusters(rna.integrated.cluster.rest, resolution = 0.1)
+```
+
+```{r, fig.width = 13, fig.height = 13}
+rna.integrated.cluster.rest  <- FindClusters(rna.integrated.cluster.rest, resolution = 0.05)
+umap_005_res_plot <- DimPlot(rna.integrated.cluster.rest, reduction = "umap", pt.size = 1.5) + 
+  theme(text=element_text(size=20),
+        axis.text=element_text(size=20),
+        legend.text=element_text(size=25)) +
+  labs(title = "UMAP plot with resolution = 0.05")
+
+rna.integrated.cluster.rest  <- FindClusters(rna.integrated.cluster.rest, resolution = 0.1)
+umap_01_res_plot <- DimPlot(rna.integrated.cluster.rest, reduction = "umap", pt.size = 1.5) + 
+  theme(text=element_text(size=20),
+        axis.text=element_text(size=20),
+        legend.text=element_text(size=25)) +
+    labs(title = "UMAP plot with resolution = 0.1")
+
+rna.integrated.cluster.rest  <- FindClusters(rna.integrated.cluster.rest, resolution = 0.3)
+umap_03_res_plot <- DimPlot(rna.integrated.cluster.rest, reduction = "umap", pt.size = 1.5) + 
+  theme(text=element_text(size=20),
+        axis.text=element_text(size=20),
+        legend.text=element_text(size=25)) +
+    labs(title = "UMAP plot with resolution = 0.3")
+
+rna.integrated.cluster.rest  <- FindClusters(rna.integrated.cluster.rest, resolution = 1.5)
+umap_15_res_plot <- DimPlot(rna.integrated.cluster.rest, reduction = "umap", pt.size = 1.5) + 
+  theme(text=element_text(size=20),
+        axis.text=element_text(size=20),
+        legend.text=element_text(size=25)) +
+    labs(title = "UMAP plot with resolution = 1.5")
+
+rna.integrated.cluster.rest  <- FindClusters(rna.integrated.cluster.rest, resolution = 0.3)
+
+png(file = "plots/for_article/Suppl_scRNA_umap_rest_testing_different_resolutions.png", 
+    res = 300, 
+    units = "in",
+    width = 13,
+    height = 13)
+(umap_005_res_plot | umap_01_res_plot) / (umap_03_res_plot | umap_15_res_plot)
+dev.off()
+
+(umap_005_res_plot | umap_01_res_plot) / (umap_03_res_plot | umap_15_res_plot)
+```
+
+```{r}
+# Separating neuron cluster
+# integrated_rest_extreme_res  <- FindClusters(rna.integrated.cluster.rest, resolution = 6)
+standalone_cluster_cell_IDs <- c( "cDNA1_ATCCTATCAAAGGCTG-1", "cDNA1_GACTGATGTACGGTTT-1", "cDNA1_GGTTGTACAAGACTGG-1", "cDNA1_TTCTAGTAGTCACTGT-1", "cDNA2_AATAGAGGTGGAAGTC-1", "cDNA2_ACTATCTTCAGGAAAT-1", "cDNA2_CCACGAGCACATTCGA-1", "cDNA2_CGTTCTGCAGTTCCAA-1", "cDNA2_CTCGAGGTCCACTTCG-1", "cDNA2_GAACGTTAGAGAACCC-1", "cDNA2_GCGGAAAAGACTGTTC-1", "cDNA2_GGAATGGAGGTGCTAG-1", "cDNA2_GGTAGAGGTGTTGAGG-1", "cDNA2_GTCATCCGTGAGCGAT-1", "cDNA2_GTGAGTTCAGCTCTGG-1", "cDNA2_TCTCAGCTCCGGACGT-1")
+new_cluster_ids <- as.character(Idents(rna.integrated.cluster.rest))
+names(new_cluster_ids) <- names(Idents(rna.integrated.cluster.rest))
+new_cluster_ids <- replace(new_cluster_ids,standalone_cluster_cell_IDs,"neurons")
+new_cluster_ids <- as.factor(new_cluster_ids)
+# integrated_rest_extreme_res <- StashIdent(object = integrated_rest_extreme_res, save.name = "auto.ident")
+Idents(object = rna.integrated.cluster.rest) <- new_cluster_ids
 ```
 
 
@@ -56,55 +139,36 @@ rna.integrated.cluster.rest_annotated <- RenameIdents(rna.integrated.cluster.res
 ```{r}
 #Set color pallete for Clusters
 nclusters <- length(levels(Idents(rna.integrated.cluster.rest_annotated)))
-# cluster_color_pallete <- RColorBrewer::brewer.pal(n = nclusters, name = 'Paired')
-# cluster_color_pallete <- c("#c47d41",
-# "#8462ca",
-# "#67b64e",
-# "#c861b1",
-# "#bfad44",
-# "#688ccd",
-# "#ce4a3c",
-# "#4bb193",
-# "#c55d78",
-# "#6a7e37")
-
-# cluster_color_pallete <- c("#ff9017",
-# "#00589a",
-# "#c2a900",
-# "#b793ff",
-# "#00d365",
-# "#d80087",
-# "#5b2300",
-# "#f7afee",
-# "#f20037",
-# "#43162e") #intense but distinct
-
-cluster_color_pallete <- c("#4bb193",
-"#bc6789",
-"#6788cc",
-"#6e8139",
-"#bd7846",
-"#c7a83f",
-"#9a64ca",
-"#d25141",
-"#d34894",
-"#6bb74d") # soft, earthy
+cluster_color_pallete <- RColorBrewer::brewer.pal(n = nclusters, name = 'Paired')
 ```
 
 
 
-```{r}
-pdf(file = "plots/for_article/S_f_2_umap_rest_high_res_03_annotated.pdf")
-DimPlot(rna.integrated.cluster.rest_annotated, reduction = "umap", cols = cluster_color_pallete)
+```{r, fig.width = 10, fig.height = 7}
+pdf(file = "plots/for_article/S_f_2_umap_rest_high_res_03_annotated.pdf", width = 10, height = 7)
+DimPlot(rna.integrated.cluster.rest_annotated, reduction = "umap", cols = cluster_color_pallete, pt.size = 1.5) + 
+  theme(text=element_text(size=20),
+        axis.text=element_text(size=20),
+        legend.text=element_text(size=25))
 dev.off()
-DimPlot(rna.integrated.cluster.rest_annotated, reduction = "umap", cols = cluster_color_pallete)
+DimPlot(rna.integrated.cluster.rest_annotated, reduction = "umap", cols = cluster_color_pallete, pt.size = 1.5) + 
+  theme(text=element_text(size=20),
+        axis.text=element_text(size=20),
+        legend.text=element_text(size=25))
 ```
 
-```{r}
-pdf(file = "plots/for_article/Suppl_scRNA_umap_rest_high_res_03_annotated_with_lables.pdf")
-DimPlot(rna.integrated.cluster.rest_annotated, reduction = "umap", label = TRUE, repel = TRUE, cols = cluster_color_pallete)
+
+```{r, fig.width = 10, fig.height = 7}
+pdf(file = "plots/for_article/Suppl_scRNA_umap_rest_high_res_03_annotated_with_lables.pdf", width = 10, height = 7)
+DimPlot(rna.integrated.cluster.rest_annotated, reduction = "umap", label = TRUE, repel = TRUE, cols = cluster_color_pallete, label.size = 7, pt.size = 1.5) + 
+  theme(text=element_text(size=20),
+        axis.text=element_text(size=20),
+        legend.text=element_text(size=25))
 dev.off()
-DimPlot(rna.integrated.cluster.rest_annotated, reduction = "umap", label = TRUE, repel = TRUE, cols = cluster_color_pallete) 
+DimPlot(rna.integrated.cluster.rest_annotated, reduction = "umap", label = TRUE, repel = TRUE, cols = cluster_color_pallete, label.size = 7, pt.size = 1.5)  + 
+  theme(text=element_text(size=20),
+        axis.text=element_text(size=20),
+        legend.text=element_text(size=25))
 ```
 
 
@@ -196,6 +260,10 @@ pheatmap::pheatmap(t(scale(t(to_heatmap_rest), center = FALSE)),
 pdf(file = "plots/for_article/Suppl_scRNA_non_erythrocytes_heatmap_markers_10_clusters_percentage_of_expressing_cells_in_a_cluster_MORE_MARKERS_with_numbers.pdf", height = 42)
 heatmap_rest_avg_with_num
 dev.off()
+
+png(filename = "plots/for_article/Suppl_scRNA_non_erythrocytes_heatmap_markers_10_clusters_percentage_of_expressing_cells_in_a_cluster_MORE_MARKERS_with_numbers.png", height = 42, units = "in", res = 300, width = 7)
+heatmap_rest_avg_with_num
+dev.off()
 ```
 
 
@@ -243,6 +311,45 @@ heatmap_rest_avg_with_num
 dev.off()
 ```
 
+### Average expression of markers on UMAP plot
+
+```{r fig.width=9, fig.height=9}
+DefaultAssay(rna.integrated.cluster.rest_annotated) <- "RNA"
+avg_plot_macrophages <- Nebulosa::plot_density(rna.integrated.cluster.rest_annotated, c("thrap3a"), slot = "counts", )
+avg_plot_integument <- Nebulosa::plot_density(rna.integrated.cluster.rest_annotated, c("ca15b"), slot = "counts")
+avg_plot_neutrophils <- Nebulosa::plot_density(rna.integrated.cluster.rest_annotated, c("npsn (1 of many)"), slot = "counts")
+avg_plot_lymphocytes <- Nebulosa::plot_density(rna.integrated.cluster.rest_annotated, c("prf1.9"), slot = "counts")
+avg_plot_ionocytes <- Nebulosa::plot_density(rna.integrated.cluster.rest_annotated, c("atp1b1b"), slot = "counts")
+avg_plot_epithelium <- Nebulosa::plot_density(rna.integrated.cluster.rest_annotated, c("ptgdsb.1"), slot = "counts")
+avg_plot_leukocytes_2 <- Nebulosa::plot_density(rna.integrated.cluster.rest_annotated, c("cxcl19"), slot = "counts")
+avg_plot_neurons <- Nebulosa::plot_density(rna.integrated.cluster.rest_annotated, c("s100a1"), slot = "counts")
+
+full_plot <- ((avg_plot_macrophages + ggtitle("macrophages")) + 
+    (avg_plot_integument+ ggtitle("integument")) + 
+    (avg_plot_neutrophils) + ggtitle("neutropils")) / 
+  ((avg_plot_lymphocytes + ggtitle("lymphocytes")) + 
+     (avg_plot_ionocytes + ggtitle("ionocytes")) + 
+     (avg_plot_epithelium + ggtitle("epithelium"))) / 
+((avg_plot_leukocytes_2 + ggtitle("leukocytes_2")) + 
+   (avg_plot_neurons + ggtitle("neurons")) + 
+   patchwork::plot_spacer()) & 
+  theme(
+    legend.position = "none",
+        axis.title = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        axis.line = element_blank(),
+        axis.text.x = element_blank(),
+        axis.text.y = element_blank())
+
+
+pdf(file = "plots/for_article/scRNA_avg_marker_expression_on_UMAP.pdf", width = 9, height = 9)
+full_plot
+dev.off()
+
+DefaultAssay(rna.integrated.cluster.rest_annotated) <- "integrated"
+```
+
 
 
 ### Fig. 1d. Correlation of marine-freshwater expression divergence between bulk RNA-seq and averaged snRNA-seq datasets. 
@@ -266,7 +373,7 @@ bulk_DEGs_common_filtered <- bulk_DEGs[sc_DEGs_filtered$ensembl, ]
 ```
 
 ```{r plotting_corr_bulk_vs_sc}
-require(ggpubr)
+
 #combining DEG tablesf
 combined_DEGs <- merge(sc_DEGs[,c("avg_logFC", "p_val", "ensembl")], bulk_DEGs_common[,c("logFC", "PValue", "...1")], by.x = "ensembl", by.y = "...1")
 colnames(combined_DEGs) <- c("ensembl", "single_cell_logFC", "single_cell_pval", "bulk_logFC", "bulk_pval")
@@ -296,163 +403,6 @@ dev.off()
 ```
 
 
-
-```{r mean_of_all_sc_counts}
-library(tidyverse)
-rna.integrated.saline <- subset(rna.integrated, orig.ident %in% c("stickleback.sample.1", "stickleback.sample.2"))
-rna.integrated.fresh <- subset(rna.integrated, orig.ident %in% c("stickleback.sample.3", "stickleback.sample.4"))
-
-saline_sc_counts <- as_tibble(rna.integrated.saline@assays[["RNA"]]@data)
-saline_sc_counts %>% apply(.,1,mean) -> saline_sc_counts_mean
-saline_sc_counts_mean <- tibble(gene = rna.integrated@assays[["RNA"]]@data@Dimnames[[1]], mean_expression = saline_sc_counts_mean)
-cellranger_gene_table <- read.table(file = "data/10X_features.tsv", sep = "\t")
-saline_sc_counts_mean <- merge(saline_sc_counts_mean, cellranger_gene_table[,1:2], by.x = "gene", by.y = "V2")
-colnames(saline_sc_counts_mean) <- c("gene", "sc_mean_expression", "ensembl_id")
-
-freshwater_sc_counts <- as_tibble(rna.integrated.fresh@assays[["RNA"]]@data)
-freshwater_sc_counts %>% apply(.,1,mean) -> freshwater_sc_counts_mean
-freshwater_sc_counts_mean <- tibble(gene = rna.integrated@assays[["RNA"]]@data@Dimnames[[1]], mean_expression = freshwater_sc_counts_mean)
-cellranger_gene_table <- read.table(file = "data/10X_features.tsv", sep = "\t")
-freshwater_sc_counts_mean <- merge(freshwater_sc_counts_mean, cellranger_gene_table[,1:2], by.x = "gene", by.y = "V2")
-colnames(freshwater_sc_counts_mean) <- c("gene", "sc_mean_expression", "ensembl_id")
-```
-
-```{r}
-# Function leaves randomly on of the duplicated rows
-RemoveDups <- function(df, column) {  
-  inds = sample(1:nrow(df))  
-  df   = df[inds, ]
-
-  dups = duplicated(df[, column])
-  df   = df[!dups, ]
-  inds = inds[!dups]
-
-  df[sort(inds, index=T)$ix, ]
-}
-```
-
-
-```{r normalized_bulk_counts}
-library(edgeR)
-library(magrittr)
-
-stickleback_gene_lengths <- read.table(file = "data/stickleback_gene_lengths.txt", sep = "\t", header = TRUE)
-stickleback_gene_lengths %<>% 
-  rename(transcript_length = Transcript.length..including.UTRs.and.CDS.)
-
-bulk_counts <- readxl::read_excel("data/msx156_Supp/S5A_table_RNAseq_rawcounts.xlsx")
-
-bulk_counts_freshwater <-  
-  select(bulk_counts, contains("FF") | contains("...1")) %>% rename(ensembl_id = ...1)
-
- merge(bulk_counts_freshwater,stickleback_gene_lengths, by.x="ensembl_id", by.y="Gene.stable.ID") %>% select(ensembl_id, transcript_length) -> gene_lengths
-gene_lengths %<>% RemoveDups(., "ensembl_id")
-
-y_freshwater <- DGEList(counts=select(bulk_counts_freshwater, !contains("id")),genes=gene_lengths)
-y_freshwater <- calcNormFactors(y_freshwater)
-bulk_counts_RPKM_freshwater <- as_tibble(rpkm(y_freshwater), gene.length = y_freshwater[["genes"]][["transcript_length"]])
-bulk_counts_RPKM_freshwater_mean <- as_tibble(apply(bulk_counts_RPKM_freshwater, 1, mean))
-  bulk_counts_RPKM_freshwater_mean$gene <- y_freshwater[["genes"]][["ensembl_id"]]
-bulk_counts_RPKM_freshwater_mean %<>%
-    rename(bulk_mean_expression = value)
-
-
-bulk_counts_saline <-  
-  select(bulk_counts, contains("FF") | contains("...1")) %>% rename(ensembl_id = ...1)
-
- merge(bulk_counts_saline,stickleback_gene_lengths, by.x="ensembl_id", by.y="Gene.stable.ID") %>% select(ensembl_id, transcript_length) -> gene_lengths
-gene_lengths %<>% RemoveDups(., "ensembl_id")
-
-y_saline <- DGEList(counts=select(bulk_counts_saline, !contains("id")),genes=gene_lengths)
-y_saline <- calcNormFactors(y_saline)
-bulk_counts_RPKM_saline <- as_tibble(rpkm(y_saline), gene.length = y_saline[["genes"]][["transcript_length"]])
-bulk_counts_RPKM_saline_mean <- as_tibble(apply(bulk_counts_RPKM_saline, 1, mean))
-  bulk_counts_RPKM_saline_mean$gene <- y_saline[["genes"]][["ensembl_id"]]
-bulk_counts_RPKM_saline_mean %<>%
-    rename(bulk_mean_expression = value)
-```
-
-```{r plotting_sc_vs_bulk_mean_counts_freshwater}
-
-combined_counts_freshwater <- merge(freshwater_sc_counts_mean[c("sc_mean_expression", "ensembl_id")], bulk_counts_RPKM_freshwater_mean, by.x = "ensembl_id", by.y = "gene") 
-combined_counts_freshwater %<>% mutate(sc_mean_expression = sc_mean_expression * (mean(bulk_mean_expression) / mean(sc_mean_expression) ))
-
-write.table(combined_counts_freshwater, file = "data/combined_mean_expression_freshwater_sc_and_bulk.tsv", sep = "\t")
-# combined_counts_freshwater$density <- densCols(combined_counts_freshwater$sc_mean_expression,
-#                                                combined_counts_freshwater$bulk_mean_expression,
-#                                                colramp = colorRampPalette(rev(rainbow(10, end = 4/6))),
-#                                                nbin = 1024)
-
-
-
-p_corr_bulk_vs_sc_freshwater <- ggplot(combined_counts_freshwater) +
-      geom_point(aes(sc_mean_expression, bulk_mean_expression), size = 1) +
-      # geom_point(aes(sc_mean_expression, bulk_mean_expression, col = density), size = 1) +
-      stat_cor(aes(sc_mean_expression, bulk_mean_expression), method = "pearson", label.x = 50, label.y = 400, size=6, color="#696969")+
-      coord_cartesian(xlim = c(0, 500), ylim = c(0, 500)) +
-      # xlim(-0.25, 0.25) +
-      # ylim(-2.5, 2.25) +
-      scale_color_identity() +
-      theme_classic(base_size = 20) +
-      theme(panel.border = element_rect(colour = "black", fill=NA, size=1)) +
-      xlab("Expression, scRNA-seq") +
-      ylab("Expression, RNA-seq")
-
-p_corr_bulk_vs_sc_freshwater
-svg(filename = "plots/for_article/S_f_3a_mean_experssion_freshwater_scatter_scRNA_vs_bulk_with_density.svg")
-print(p_corr_bulk_vs_sc_freshwater)
-dev.off()
-```
-
-```{r bulk_vs_sc_log_scale}
-p_corr_bulk_vs_sc_freshwater <- ggplot(combined_counts_freshwater) +
-      geom_point(aes(log(sc_mean_expression), log(bulk_mean_expression)), size = 1) +
-      # geom_point(aes(sc_mean_expression, bullog()ean_expression, col = density), size = 1) +
-      stat_cor(aes(log(sc_mean_expression), log(bulk_mean_expression)), method = "pearson", label.x = 4, label.y = 10, size=6, color="#696969")+
-      # coord_cartesian(xlim = c(0, 500), ylim = c(0, 500)) +
-      # xlim(-0.25, 0.25) + 
-      # ylim(-2.5, 2.25) +
-      scale_color_identity() +
-      theme_classic(base_size = 20) +
-      theme(panel.border = element_rect(colour = "black", fill=NA, size=1)) +
-      xlab("Expression, scRNA-seq") +
-      ylab("Expression, RNA-seq")
-
-p_corr_bulk_vs_sc_freshwater
-```
-
-
-```{r plotting_sc_vs_bulk_mean_counts_saline}
-
-combined_counts_saline <- merge(saline_sc_counts_mean[c("sc_mean_expression", "ensembl_id")], bulk_counts_RPKM_saline_mean, by.x = "ensembl_id", by.y = "gene") 
-combined_counts_saline %<>% mutate(sc_mean_expression = sc_mean_expression * (mean(bulk_mean_expression) / mean(sc_mean_expression) ))
-
-write.table(combined_counts_saline, file = "data/combined_mean_expression_saline_sc_and_bulk.tsv", sep = "\t")
-# combined_counts_saline$density <- densCols(combined_counts_saline$sc_mean_expression,
-#                                                combined_counts_saline$bulk_mean_expression,
-#                                                colramp = colorRampPalette(rev(rainbow(10, end = 4/6))),
-#                                                nbin = 1024)
-
-
-
-p_corr_bulk_vs_sc_saline <- ggplot(combined_counts_saline) +
-      geom_point(aes(sc_mean_expression, bulk_mean_expression), size = 1) +
-      # geom_point(aes(sc_mean_expression, bulk_mean_expression, col = density), size = 1) +
-      stat_cor(aes(sc_mean_expression, bulk_mean_expression), method = "pearson", label.x = 50, label.y = 400, size=6, color="#696969")+
-      coord_cartesian(xlim = c(0, 500), ylim = c(0, 500)) +
-      # xlim(-0.25, 0.25) +
-      # ylim(-2.5, 2.25) +
-      scale_color_identity() +
-      theme_classic(base_size = 20) +
-      theme(panel.border = element_rect(colour = "black", fill=NA, size=1)) +
-      xlab("Expression, scRNA-seq") +
-      ylab("Expression, RNA-seq")
-
-p_corr_bulk_vs_sc_saline
-svg(filename = "plots/for_article/S_f_3b_mean_experssion_saline_scatter_scRNA_vs_bulk_with_density.svg")
-print(p_corr_bulk_vs_sc_saline)
-dev.off()
-```
 
 Insignificant, should not be included in the paper.
 
@@ -576,25 +526,426 @@ dev.off()
 mu_btw
 ```
 
-# F-ratio without filtering
+# F-ratio without filtering for erytrocyte cluster for selected HVGs
+
+```{r subsetting_blood_for_each_sample_and_HVGs}
+load(file = "data/rna.integrated.filtered.after.clustering.obj.RData")
+rna.integrated.cluster.blood <- subset(rna.integrated, idents = 0)
+blood_cells_ids <- rna.integrated.cluster.blood@assays[["RNA"]]@counts@Dimnames[[2]]
+# blood_cells_ids <- paste(blood_cells_ids, rep("-1", length(blood_cells_ids)), sep = "") 
+
+
+stickleback.rna.comb <- readRDS(file = "data/stickleback.rna.seurat.samples.PURE_ENSEMBLE.rds")
+rna.list <- SplitObject(stickleback.rna.comb, split.by = "orig.ident")
+vst.list <- data.frame()
+vst_one <- data.frame()
+for (i in 1:length(rna.list)) {
+    # cells_to_keep <- gsub("-1", "", rna.list[[i]]@assays[["RNA"]]@counts@Dimnames[[2]])
+    cells_to_keep <- rna.list[[i]]@assays[["RNA"]]@counts@Dimnames[[2]]
+    cells_to_keep <- subset(cells_to_keep, cells_to_keep %in% blood_cells_ids)
+    rna.list[[i]] <- subset(rna.list[[i]], cells = cells_to_keep)
+    rna.list[[i]] <- NormalizeData(rna.list[[i]], verbose = FALSE)
+    rna.list[[i]] <- FindVariableFeatures(rna.list[[i]], selection.method = "vst", 
+        nfeatures = 2000, verbose = FALSE)
+    tmp.frame <- data.frame(sample_vst = rna.list[[i]]@assays[["RNA"]]@meta.features[["vst.variance.standardized"]],
+                            sample_ids = rna.list[[i]]@assays[["RNA"]]@counts@Dimnames[[1]])
+    tmp.frame <- subset(tmp.frame, sample_ids %in% rna.list[[i]]@assays[["RNA"]]@var.features)
+    tmp.frame <- tmp.frame[order(-tmp.frame$sample_vst),]
+    tmp.frame <- mutate(tmp.frame, ID = row_number())
+    tmp.frame$sample <- paste0("sample_", i)
+    if(length(vst_one) == 0){
+      
+      vst_one <- tmp.frame
+    }
+    else{
+      vst_one <- rbind(vst_one, tmp.frame)
+    }
+    tmp.frame$sample <- NULL
+    
+    colrenames <- c(paste0("sample_", i, "_variance_std"), paste0("sample_", i, "_ids"), "ID")
+    colnames(tmp.frame) <- colrenames
+    if(length(vst.list) == 0){
+      vst.list <- tmp.frame
+    }
+    else{
+      vst.list <- merge(vst.list, tmp.frame, by = "ID")
+    }
+}
+# write.table(vst.list, file = "data/top_2000_HVGs_for_each_sample.tsv", sep = "\t")
+# head(vst.list, 50)
+ 
+hvg_union <- unique(c(vst.list$sample_1_ids,
+               vst.list$sample_2_ids,
+               vst.list$sample_3_ids,
+               vst.list$sample_4_ids))
+
+hvg_counts_sample_1 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.1"]]@assays[["RNA"]]@counts[rownames(rna.list[["stickleback.sample.1"]]@assays[["RNA"]]@counts) %in% hvg_union,]))
+hvg_counts_sample_2 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.2"]]@assays[["RNA"]]@counts[rownames(rna.list[["stickleback.sample.2"]]@assays[["RNA"]]@counts) %in% hvg_union,]))
+hvg_counts_sample_3 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.3"]]@assays[["RNA"]]@counts[rownames(rna.list[["stickleback.sample.3"]]@assays[["RNA"]]@counts) %in% hvg_union,]))
+hvg_counts_sample_4 <- tibble::rownames_to_column(as.data.frame(rna.list[["stickleback.sample.4"]]@assays[["RNA"]]@counts[rownames(rna.list[["stickleback.sample.4"]]@assays[["RNA"]]@counts) %in% hvg_union,]))
+
+hvg_counts_saline <- merge(hvg_counts_sample_1, hvg_counts_sample_2, by="rowname")
+hvg_counts_freshwater <- merge(hvg_counts_sample_3, hvg_counts_sample_4, by="rowname")
+
+hvg_counts_all <- merge(hvg_counts_saline, hvg_counts_freshwater, by="rowname")
+saline_right_boundary <- length(hvg_counts_saline) - 1
+freshwater_left_boundary <- saline_right_boundary + 1 - 1
+freshwater_right_boundary <- saline_right_boundary + length(hvg_counts_freshwater) - 1 - 1
+
+output <- apply(hvg_counts_all[,2:freshwater_right_boundary], 1, function(row){
+  # message(paste0("row = ", row))
+  x <- row[1:saline_right_boundary]
+  x <- x[x != 0]
+  y <- row[freshwater_left_boundary:(freshwater_right_boundary)]
+  y <- y[y != 0]
+  if(length(x) > 10 & length(y) > 10){
+    f.test.res <- var.test(x, y)
+    return(data.frame(f_ratio = f.test.res$estimate, p_val = f.test.res$p.value))
+  }else{
+    return(data.frame(f_ratio = NA, p_val = NA))
+  }
+  
+  # return(data.frame(test = sum(row[1:saline_right_boundary]), test.l.1 = length(row[1:saline_right_boundary]), test.l.2 = length(row[freshwater_left_boundary:freshwater_right_boundary])))
+})
+f.test.frame <- do.call(rbind,output)
+rownames(f.test.frame) <- hvg_counts_all$rowname
+
+```
 
 ```{r}
-# f.test.filtered.blood <- read.table(file = "data/f.test.filtered.blood.tsv", sep = "\t", header = TRUE)
-# MISSING IMPORT OF UNFILTERED TABLE
-f.test.frame <- subset(f.test.frame, is.finite(f.test.frame$f_ratio))
-p_f_ratio_blood <- ggplot(f.test.frame, aes(x=f_ratio))+
-  geom_histogram(binwidth = 0.25) +
-  geom_vline(aes(xintercept=median(f_ratio)), color="blue", linetype="dashed", size=1) +
+write_csv(tibble(HVGs = hvg_union), file = "plots/for_article/Suppl_Table_scRNA_HVGs_from_all_samples_unity_2000_from_each.csv")
+ f.test.frame %>% 
+  rownames_to_column(var = "gene") %>% 
+  filter(is.finite(f_ratio), f_ratio > 0) %>% 
+  write_csv(file = "plots/for_article/Suppl_Table_scRNA_F_test_table_with_HVGs_from_all_samples_cleaned.csv")
+```
+
+
+```{r}
+ f.test.frame %>% 
+  filter(is.finite(f_ratio), f_ratio > 0) %>% 
+  ggplot(aes(x=f_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(f_ratio)), color="red", linetype="dashed", size=1) +
   coord_cartesian(xlim = c(0, 5)) +
   theme_classic(base_size = 20) +
   xlab("F-ratio") +
-  ylab("Number of genes")
+  ylab("Number of genes") -> p_f_ratio_blood
 
-# svg(filename = "plots/for_article/f_1f_F_ratio_histogram_for_blood_cluster.svg")
-# print(p_f_ratio_blood)
-# dev.off()
+svg(filename = "plots/for_article/scRNA_F_ratio_histogram_for_blood_cluster_on_HVGs_from_all_samples.svg")
+print(p_f_ratio_blood)
+dev.off()
 p_f_ratio_blood
+```
+
+### F-test histogram for blood cluster for all genes with no filtering
+
+```{r}
+
+saline_right_boundary <- table(rna.integrated.cluster.blood@meta.data[["orig.ident"]])[1] + table(rna.integrated.cluster.blood@meta.data[["orig.ident"]])[2]
+freshwater_left_boundary <- saline_right_boundary + 1
+freshwater_right_boundary <- saline_right_boundary + table(rna.integrated.cluster.blood@meta.data[["orig.ident"]])[3] + table(rna.integrated.cluster.blood@meta.data[["orig.ident"]])[4]
+
+output <- apply(rna.integrated.cluster.blood@assays[["RNA"]]@counts, 1, function(row){
+  x <- row[1:saline_right_boundary]
+  x <- x[x != 0 & is.finite(x)]
+  y <- row[freshwater_left_boundary:(freshwater_right_boundary)]
+  y <- y[y != 0 & is.finite(y)]
+  if(length(x) > 10 & length(y) > 10){
+    saline_var <- var(x)
+    freshwater_var <- var(y)
+    f.test.res <- var.test(x, y)
+    # if(is.finite(f.test.res$estimate) & f.test.res$estimate == 0){
+    #   f.test.res$estimate = 1 # ========================================================== ARTIFICIALLY CHANGING ZEROES TO 1
+    # }
+    return(data.frame(f_ratio = f.test.res$estimate, p_val = f.test.res$p.value, saline_var = saline_var, freshwater_var = freshwater_var))
+  }else{
+    return(data.frame(f_ratio = NA, p_val = NA, saline_var = NA, freshwater_var = NA))
+  }
+})
+f.test.frame_all_genes <- do.call(rbind,output)
+# rownames(f.test.frame) <- hvg_counts_all$rowname
+
 ```
 
 
 
+
+
+```{r}
+ f.test.frame_all_genes %>% 
+  filter(is.finite(f_ratio), f_ratio > 0) %>% 
+  ggplot(aes(x=f_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(f_ratio)), color="red", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(0, 5)) +
+  theme_classic(base_size = 20) +
+  xlab("F-ratio") +
+  ylab("Number of genes") -> p_f_ratio_blood
+
+svg(filename = "plots/for_article/scRNA_F_ratio_histogram_for_blood_cluster_all_genes_no_filtering.svg")
+print(p_f_ratio_blood)
+dev.off()
+png(filename = "plots/for_article_png/scRNA_F_ratio_histogram_for_blood_cluster_all_genes_no_filtering.png", 
+    res = 300, 
+    units = "in",
+    width = 7,
+    height = 7)
+print(p_f_ratio_blood)
+dev.off()
+p_f_ratio_blood
+```
+
+### F-test histogram for all cells for all genes with no filtering
+
+```{r}
+
+saline_right_boundary <- table(rna.integrated@meta.data[["orig.ident"]])[1] + table(rna.integrated@meta.data[["orig.ident"]])[2]
+freshwater_left_boundary <- saline_right_boundary + 1
+freshwater_right_boundary <- saline_right_boundary + table(rna.integrated@meta.data[["orig.ident"]])[3] + table(rna.integrated@meta.data[["orig.ident"]])[4]
+
+output <- apply(rna.integrated@assays[["RNA"]]@counts, 1, function(row){
+  x <- row[1:saline_right_boundary]
+  x <- x[x != 0 & is.finite(x)]
+  y <- row[freshwater_left_boundary:(freshwater_right_boundary)]
+  y <- y[y != 0 & is.finite(y)]
+  if(length(x) > 10 & length(y) > 10){
+    saline_var <- var(x)
+    freshwater_var <- var(y)
+    f.test.res <- var.test(x, y)
+    # if(is.finite(f.test.res$estimate) & f.test.res$estimate == 0){
+    #   f.test.res$estimate = 1 # ========================================================== ARTIFICIALLY CHANGING ZEROES TO 1
+    # }
+    return(data.frame(f_ratio = f.test.res$estimate, p_val = f.test.res$p.value, saline_var = saline_var, freshwater_var = freshwater_var))
+  }else{
+    return(data.frame(f_ratio = NA, p_val = NA, saline_var = NA, freshwater_var = NA))
+  }
+})
+f.test.frame_all_cells_genes <- do.call(rbind,output)
+
+```
+
+
+
+```{r}
+ f.test.frame_all_cells_genes %>% 
+  filter(is.finite(f_ratio), f_ratio > 0) %>% 
+  ggplot(aes(x=f_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(f_ratio)), color="red", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(0, 5)) +
+  theme_classic(base_size = 20) +
+  xlab("F-ratio") +
+  ylab("Number of genes") -> p_f_ratio_all
+
+svg(filename = "plots/for_article/Suppl_scRNA_F_ratio_histogram_for_all_cells_all_genes_no_filtering.svg")
+print(p_f_ratio_all)
+dev.off()
+png(filename = "plots/for_article_png/Suppl_scRNA_F_ratio_histogram_for_all_cells_all_genes_no_filtering.png", 
+    res = 300, 
+    units = "in",
+    width = 7,
+    height = 7)
+print(p_f_ratio_all)
+dev.off()
+p_f_ratio_all
+```
+
+# Venn digram of HVGs for all cells in scRNA-seq dataset
+
+```{r subsetting_blood_for_each_sample_and_HVGs_all_cells}
+load(file = "data/rna.integrated.filtered.after.clustering.obj.RData")
+
+stickleback.rna.comb <- readRDS(file = "data/stickleback.rna.seurat.samples.PURE_ENSEMBLE.rds")
+rna.list <- SplitObject(stickleback.rna.comb, split.by = "orig.ident")
+vst.list_all_cells <- data.frame()
+vst_one <- data.frame()
+for (i in 1:length(rna.list)) {
+    # cells_to_keep <- rna.list[[i]]@assays[["RNA"]]@counts@Dimnames[[2]]
+    # cells_to_keep <- subset(cells_to_keep, cells_to_keep %in% blood_cells_ids)
+    # rna.list[[i]] <- subset(rna.list[[i]], cells = cells_to_keep)
+    rna.list[[i]] <- NormalizeData(rna.list[[i]], verbose = FALSE)
+    rna.list[[i]] <- FindVariableFeatures(rna.list[[i]], selection.method = "vst", 
+        nfeatures = 2000, verbose = FALSE)
+    tmp.frame <- data.frame(sample_vst = rna.list[[i]]@assays[["RNA"]]@meta.features[["vst.variance.standardized"]],
+                            sample_ids = rna.list[[i]]@assays[["RNA"]]@counts@Dimnames[[1]])
+    tmp.frame <- subset(tmp.frame, sample_ids %in% rna.list[[i]]@assays[["RNA"]]@var.features)
+    tmp.frame <- tmp.frame[order(-tmp.frame$sample_vst),]
+    tmp.frame <- mutate(tmp.frame, ID = row_number())
+    tmp.frame$sample <- paste0("sample_", i)
+    if(length(vst_one) == 0){
+      
+      vst_one <- tmp.frame
+    }
+    else{
+      vst_one <- rbind(vst_one, tmp.frame)
+    }
+    tmp.frame$sample <- NULL
+    
+    colrenames <- c(paste0("sample_", i, "_variance_std"), paste0("sample_", i, "_ids"), "ID")
+    colnames(tmp.frame) <- colrenames
+    if(length(vst.list_all_cells) == 0){
+      vst.list_all_cells <- tmp.frame
+    }
+    else{
+      vst.list_all_cells <- merge(vst.list_all_cells, tmp.frame, by = "ID")
+    }
+}
+# write.table(vst.list, file = "data/top_2000_HVGs_for_each_sample_blood_only.tsv", sep = "\t")
+# head(vst.list, 50)
+```
+
+### Venn diagrams for the overlapping HVGs for all samples (updated: only for blood)
+
+```{r venn_diagrams_for_overlapping_HVGs}
+require(venn)
+    
+# vst.list <- read.table(file = "data/top_2000_HVGs_for_each_sample_blood_only.tsv")
+
+png(filename = "plots/for_article/Suppl_scRNA_venn_hvgs_per_sample_all_cells.png", res = 300, width = 1500, height =1200)
+venn(list(`1_sal` = vst.list_all_cells$sample_1_ids,
+          `2_sal` = vst.list_all_cells$sample_2_ids,
+          `3_fr` = vst.list_all_cells$sample_3_ids,
+          `4_fr` = vst.list_all_cells$sample_4_ids),
+     zcolor = c("#4A8E9F", "#4A8E9F", "#A1887F", "#A1887F"), opacity = 0.8, ilcs = 1.2, sncs = 1, box = FALSE, ggplot = FALSE, plotsize = 60)
+dev.off()
+venn(list(`1_sal` = vst.list_all_cells$sample_1_ids,
+          `2_sal` = vst.list_all_cells$sample_2_ids,
+          `3_fr` = vst.list_all_cells$sample_3_ids,
+          `4_fr` = vst.list_all_cells$sample_4_ids),
+     zcolor = c("#4A8E9F", "#4A8E9F", "#A1887F", "#A1887F"), opacity = 0.8, ilcs = 1.2, sncs = 1, box = FALSE, ggplot = FALSE, plotsize = 60)
+```
+
+### GO enrichment with conversion to Zebrafish orthologs, background = union of all HVGs for all samples (ALL cells)
+
+```{r stickleback_to_zebrafish_IDs_function}
+conversion_table <- read.table(file = "data/stickleback_zebrafish_orthologs.tsv", sep = "\t", header = TRUE)
+stickleback_to_zebrafish_IDs <- function(stickleback_ensembl_ids, conversion_table, id_type="zebrafish_ensembl"){
+  conversion_table <- merge(data.frame(stickleback_ensembl = stickleback_ensembl_ids), conversion_table, by="stickleback_ensembl", sort=FALSE)
+  zebrafish_ids <- conversion_table[,id_type]
+  return(zebrafish_ids)
+}
+```
+
+```{r GO_enrichment_watertype_specific_HVGs}
+
+P_ADJUST_VALUE_CUTOFF = 0.2
+# GO enrichment for HVGs common for freshwater and saline
+saline_specific_HVGs <- stickleback_to_zebrafish_IDs(setdiff(intersect(vst.list_all_cells$sample_1_ids,
+                                                                       vst.list_all_cells$sample_2_ids),
+                                                             union(vst.list_all_cells$sample_3_ids,
+                                                                   vst.list_all_cells$sample_4_ids)), conversion_table)
+freshwater_specific_HVGs <- stickleback_to_zebrafish_IDs(setdiff(intersect(vst.list_all_cells$sample_3_ids,
+                                                                           vst.list_all_cells$sample_4_ids),
+                                                                 union(vst.list_all_cells$sample_1_ids,
+                                                                       vst.list_all_cells$sample_2_ids)), conversion_table)
+hvg_union_background <- stickleback_to_zebrafish_IDs(c(vst.list_all_cells$sample_1_ids,
+                                                       vst.list_all_cells$sample_2_ids,
+                                                       vst.list_all_cells$sample_3_ids,
+                                                       vst.list_all_cells$sample_4_ids), conversion_table)
+# write.table(hvg_union_background, file = "data/hvg_union_background_all_cells.tsv", sep = "\t")
+
+# BiocManager::install("org.Dr.eg.db")
+require(clusterProfiler)
+saline_GO <- enrichGO(gene = saline_specific_HVGs,
+                OrgDb         = "org.Dr.eg.db",
+                keyType       = 'ENSEMBL',
+                pAdjustMethod = "BH",
+                pvalueCutoff = P_ADJUST_VALUE_CUTOFF,
+                qvalueCutoff=1,
+                universe = hvg_union_background)
+freshwater_GO <- enrichGO(gene = freshwater_specific_HVGs,
+                OrgDb         = "org.Dr.eg.db",
+                keyType       = 'ENSEMBL',
+                pAdjustMethod = "BH",
+                pvalueCutoff = P_ADJUST_VALUE_CUTOFF,
+                qvalueCutoff=1,
+                universe = hvg_union_background)
+```
+
+   
+```{r GO_enrichment_plots}
+# Top of GO enrichment terms for oppositely changing genes between samples
+require(enrichplot)
+
+png(filename = "plots/for_article/Suppl_scRNA_GO_enrichment_waterspecific_HVGs_saline_ALL_CELLS.png", 
+    res = 300, 
+    units = "in",
+    width = 9,
+    height = 7)
+dotplot(saline_GO, showCategory = 30,
+        title = "GO terms, saline_GO")
+dev.off()
+png(filename = "plots/for_article/Suppl_scRNA_GO_enrichment_waterspecific_HVGs_freshwater_ALL_CELLS.png", 
+    res = 300, 
+    units = "in",
+    width = 9,
+    height = 7)
+dotplot(freshwater_GO, showCategory = 30,
+        title = "GO terms, freshwater_GO")
+dev.off()
+
+dotplot(saline_GO, showCategory = 30,
+        title = "GO terms, saline_GO")
+dotplot(freshwater_GO, showCategory = 30,
+        title = "GO terms, freshwater_GO")
+```
+
+```{r to_entrez_for_kegg}
+require(biomaRt)
+ensembl <- useEnsembl(biomart = "ensembl")
+ensembl <- useDataset(dataset = "drerio_gene_ensembl", mart = ensembl)
+
+freshwater_specific_HVGs_entrez <- getBM(attributes=c("entrezgene_id"),
+      filters=c('ensembl_gene_id'),
+      values=freshwater_specific_HVGs,
+      mart=ensembl)[["entrezgene_id"]]
+
+saline_specific_HVGs_entrez <- getBM(attributes=c("entrezgene_id"),
+      filters=c('ensembl_gene_id'),
+      values=saline_specific_HVGs,
+      mart=ensembl)[["entrezgene_id"]]
+
+hvg_union_background_entrez <- getBM(attributes=c("entrezgene_id"),
+      filters=c('ensembl_gene_id'),
+      values=hvg_union_background,
+      mart=ensembl)[["entrezgene_id"]]
+
+```
+
+### KEGG pathways for watertype specific HVGs for ALL CELLS
+
+```{r kegg_watertype_specific_HVGs}
+P_ADJUST_VALUE_CUTOFF_KEGG = 0.1
+
+saline_kegg <- enrichKEGG(saline_specific_HVGs_entrez,
+                          organism="dre",
+                          universe=hvg_union_background_entrez,
+                          pvalueCutoff=0.1,
+                          pAdjustMethod="BH")
+freshwater_kegg <- enrichKEGG(freshwater_specific_HVGs_entrez,
+                          organism="dre",
+                          universe=hvg_union_background_entrez,
+                          pvalueCutoff=0.1,
+                          pAdjustMethod="BH")
+```
+
+
+```{r kegg_plots_watertype_hvgs}
+png(filename = "plots/for_article/Suppl_scRNA_KEGG_enrichment_waterspecific_HVGs_saline_ALL_CELLS.png", 
+    res = 300, 
+    units = "in",
+    width = 9,
+    height = 7)
+dotplot(saline_kegg,showCategory = 30,title = "KEGG terms, saline")
+dev.off()
+# png(filename = "plots/for_article/Suppl_scRNA_KEGG_enrichment_waterspecific_HVGs_freshwater_ALL_CELLS.png", 
+#     res = 300, 
+#     units = "in",
+#     width = 7,
+#     height = 7)
+# dotplot(freshwater_kegg,showCategory = 30,title = "KEGG terms, freshwater")
+# dev.off()
+dotplot(saline_kegg,showCategory = 30,title = "KEGG terms, saline")
+# dotplot(freshwater_kegg,showCategory = 30,title = "KEGG terms, freshwater") # NO CATEGORIES DISCOVERED
+```
