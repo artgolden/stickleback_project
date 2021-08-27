@@ -1,0 +1,79 @@
+---
+title: "F-ratio histogram for scRNA data for all genes"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_knit$set(root.dir = "/home/tema/work/skolkovo/fish_project/")
+knitr::opts_chunk$set(echo=FALSE, message = FALSE)
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+library(Seurat)
+set.seed(42)
+```
+
+```{r}
+load(file = "data/rna.integrated.filtered.after.clustering.obj.RData")
+rna.integrated.cluster.blood <- subset(rna.integrated, idents = 0)
+blood_cells_ids <- rna.integrated.cluster.blood@assays[["RNA"]]@counts@Dimnames[[2]]
+```
+
+```{r}
+1905+8003
+
+
+```
+
+```{r}
+
+saline_right_boundary <- table(rna.integrated.cluster.blood@meta.data[["orig.ident"]])[1] + table(rna.integrated.cluster.blood@meta.data[["orig.ident"]])[2]
+freshwater_left_boundary <- saline_right_boundary + 1
+freshwater_right_boundary <- saline_right_boundary + table(rna.integrated.cluster.blood@meta.data[["orig.ident"]])[3] + table(rna.integrated.cluster.blood@meta.data[["orig.ident"]])[4]
+
+output <- apply(rna.integrated.cluster.blood@assays[["RNA"]]@counts, 1, function(row){
+  x <- row[1:saline_right_boundary]
+  x <- x[x != 0 & is.finite(x)]
+  y <- row[freshwater_left_boundary:(freshwater_right_boundary)]
+  y <- y[y != 0 & is.finite(y)]
+  if(length(x) > 10 & length(y) > 10){
+    saline_var <- var(x)
+    freshwater_var <- var(y)
+    f.test.res <- var.test(x, y)
+    # if(is.finite(f.test.res$estimate) & f.test.res$estimate == 0){
+    #   f.test.res$estimate = 1 # ========================================================== ARTIFICIALLY CHANGING ZEROES TO 1
+    # }
+    return(data.frame(f_ratio = f.test.res$estimate, p_val = f.test.res$p.value, saline_var = saline_var, freshwater_var = freshwater_var))
+  }else{
+    return(data.frame(f_ratio = NA, p_val = NA, saline_var = NA, freshwater_var = NA))
+  }
+})
+f.test.frame_all_genes <- do.call(rbind,output)
+# rownames(f.test.frame) <- hvg_counts_all$rowname
+
+```
+
+### F-test histogram for blood cluster NO FILTERING
+
+
+
+```{r}
+# f.test.filtered.blood <- read.table(file = "data/f.test.filtered.blood.tsv", sep = "\t", header = TRUE)
+ f.test.frame_all_genes %>% 
+  filter(is.finite(f_ratio), f_ratio > 0) %>% 
+  # transmute(f_ratio = log2(f_ratio)) %>% 
+  ggplot(aes(x=f_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(f_ratio)), color="red", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(0, 5)) +
+  theme_classic(base_size = 20) +
+  xlab("F-ratio") +
+  ylab("Number of genes") -> p_f_ratio_blood
+  # labs(title = "marine/freshwater variance in genes\n in scRNA data with 5000 HVG per sample") 
+
+# svg(filename = "plots/for_article/f_1f_F_ratio_histogram_for_blood_cluster.svg")
+# print(p_f_ratio_blood)
+# dev.off()
+p_f_ratio_blood
+```
