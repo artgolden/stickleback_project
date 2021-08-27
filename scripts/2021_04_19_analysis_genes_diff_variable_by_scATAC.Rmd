@@ -107,4 +107,3 @@ atac_genes_transcription %>%
 ```
 As it can be seen, most of the genes identified by scATAC as having elevated varience have no detecteble transcription level.
 
-

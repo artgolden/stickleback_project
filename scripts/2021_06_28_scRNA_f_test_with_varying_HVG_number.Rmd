@@ -46,7 +46,7 @@ for (i in 1:length(rna.list)) {
     rna.list[[i]] <- subset(rna.list[[i]], cells = cells_to_keep)
     rna.list[[i]] <- NormalizeData(rna.list[[i]], verbose = FALSE)
     rna.list[[i]] <- FindVariableFeatures(rna.list[[i]], selection.method = "vst", 
-        nfeatures = 2000, verbose = FALSE)
+        nfeatures = 5000, verbose = FALSE)
     tmp.frame <- data.frame(sample_vst = rna.list[[i]]@assays[["RNA"]]@meta.features[["vst.variance.standardized"]],
                             sample_ids = rna.list[[i]]@assays[["RNA"]]@counts@Dimnames[[1]])
     tmp.frame <- subset(tmp.frame, sample_ids %in% rna.list[[i]]@assays[["RNA"]]@var.features)
