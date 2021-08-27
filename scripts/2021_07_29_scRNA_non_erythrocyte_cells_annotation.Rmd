@@ -31,11 +31,86 @@ rna.integrated.cluster.rest <- FindClusters(rna.integrated.cluster.rest, resolut
 ```
 
 ```{r}
-svg(filename = "plots/Suppl_scRNA_umap_rest_very_high_res_3.svg")
+# Separating neuron cluster
+integrated_rest_extreme_res  <- FindClusters(rna.integrated.cluster.rest, resolution = 6)
+standalone_cluster_cell_IDs <- names(Idents(integrated_rest_extreme_res)[Idents(integrated_rest_extreme_res) == 22])
+new_cluster_ids <- as.character(Idents(rna.integrated.cluster.rest))
+names(new_cluster_ids) <- names(Idents(rna.integrated.cluster.rest))
+new_cluster_ids <- replace(new_cluster_ids,standalone_cluster_cell_IDs,"neurons")
+new_cluster_ids <- as.factor(new_cluster_ids)
+integrated_rest_extreme_res <- StashIdent(object = integrated_rest_extreme_res, save.name = "auto.ident")
+Idents(object = rna.integrated.cluster.rest) <- new_cluster_ids
+```
+
+
+
+```{r}
+# Intersecting rest markers with markers from paper https://www.sciencedirect.com/science/article/pii/S0012160619304919?via%3Dihub#appsec1
+# TODO:
+# - import exel file
+# - get list of markers from the paper
+# - intersect with markers from non-erythrocyte cell clusters
+
+danio_paper_markers <- as.data.frame(readxl::read_xlsx("data/1-s2.0-S0012160619304919-mmc7.xlsx"))
+non_erythrocyte_cells_markers <- integrated.cluster.rest.markers %>%
+    group_by(cluster) %>%
+    top_n(n = 15, wt = avg_log2FC) -> non_erythrocyte_cells_markers_top15
+non_erythrocyte_cells_markers_top15$gene[non_erythrocyte_cells_markers_top15$gene %in% unlist(danio_paper_markers[-1,9:24])]
+```
+
+```{r}
+svg(filename = "plots/test/scRNA_umap_rest_very_high_res_3_with_neurons.svg")
 DimPlot(rna.integrated.cluster.rest, reduction = "umap")
 dev.off()
-DimPlot(rna.integrated.cluster.rest, reduction = "umap")
+# DimPlot(rna.integrated.cluster.rest, reduction = "umap", cells.highlight = names(Idents(rna.integrated.cluster.rest)[Idents(rna.integrated.cluster.rest) == 3]))
+DimPlot(rna.integrated.cluster.rest, reduction = "umap", label = TRUE)
 ```
+
+```{r fig.width=12, fig.height=11}
+# integrated.saline.rest.markers <- read_csv(file = "data/stickleback.saline.rest.clusters.csv")
+# integrated.saline.rest.markers %>%
+#     group_by(cluster) %>%
+#     top_n(n = 15, wt = avg_logFC) -> top10
+# DoHeatmap(rna.integrated.cluster.rest, features = top10$gene) + NoLegend() -> heatmap_rest
+# pdf(file = "plots/for_article/scRNA_rest_heatmap_markers.pdf", height = 11)
+# heatmap_rest
+# dev.off()
+# heatmap_rest
+```
+
+```{r fig.width=12, fig.height=11}
+# First versions  
+
+# integrated.cluster.rest.markers <- FindAllMarkers(rna.integrated.cluster.rest, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.15)
+# integrated.cluster.rest.markers %>%
+#     group_by(cluster) %>%
+#     top_n(n = 15, wt = avg_log2FC) -> top15
+# avg_integrated_rest <- AverageExpression(object = rna.integrated.cluster.rest)[[2]]
+# to_heatmap_rest <- subset(avg_integrated_rest, rownames(avg_integrated_rest) %in% top15$gene)
+# # to_heatmap_rest <- to_heatmap_rest[rownames(to_heatmap_rest) != "hbae5",]
+# colnames(to_heatmap_rest) <- c("Cluster 0", "Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4", "Cluster 5", "Cluster 6")
+# n = 15
+# rows_annot <- top15[,c("gene", "cluster")]
+# rows_annot$cl <- "Cluster"
+# rows_annot <- as.data.frame(unite(rows_annot, "cluster", c("cl", "cluster"), sep = " "))
+# rownames(rows_annot) <- rows_annot$gene
+# rows_annot$gene <- NULL
+# log2_to_heatmap_rest <- log2(to_heatmap_rest)
+# log2_to_heatmap_rest[which(!is.finite(log2_to_heatmap_rest))] <- 0
+# log2_to_heatmap_rest <- log2_to_heatmap_rest[top15$gene,]
+# breakpoints <- seq(-10, 10, by = 1)
+# cols <- colorRampPalette(RColorBrewer::brewer.pal(n = 9, name = "PuBu"))(length(breakpoints))
+# pheatmap::pheatmap(log2_to_heatmap_rest, 
+#                    cluster_cols = FALSE, 
+#                    cluster_rows = FALSE, 
+#                    annotation_row = rows_annot,
+#                    breaks = breakpoints,
+#                    color = cols)-> heatmap_rest_avg
+# pdf(file = "plots/for_article/scRNA_rest_avg_heatmap_markers_6_clusters.pdf", height = 13)
+# heatmap_rest_avg
+# dev.off()
+```
+
 
 ```{r fig.width=12, fig.height=23}
 integrated.cluster.rest.markers <- FindAllMarkers(rna.integrated.cluster.rest, only.pos = TRUE, min.pct = 0.1, logfc.threshold = 0.15)
@@ -63,7 +138,7 @@ pheatmap::pheatmap(log2_to_heatmap_rest,
                    annotation_row = rows_annot,
                    breaks = breakpoints,
                    color = cols)-> heatmap_rest_avg
-pdf(file = "plots/scRNA_rest_avg_heatmap_markers_many_9_clusters.pdf", height = 21)
+pdf(file = "plots/test/scRNA_rest_avg_heatmap_markers_many_9_clusters.pdf", height = 21)
 heatmap_rest_avg
 dev.off()
 ```
@@ -122,6 +197,17 @@ dev.off()
 
 
 ```{r fig.height=42, fig.width=9}
+integrated.cluster.rest.markers <- FindAllMarkers(rna.integrated.cluster.rest, only.pos = TRUE, min.pct = 0.1, logfc.threshold = 0.15)
+integrated.cluster.rest.markers %>%
+    group_by(cluster) %>%
+    top_n(n = 20, wt = avg_log2FC) -> top_by_logfc
+
+integrated.cluster.rest.markers_RNA <- FindAllMarkers(rna.integrated.cluster.rest, only.pos = TRUE, min.pct = 0.1, logfc.threshold = 0.15, assay = "RNA")
+integrated.cluster.rest.markers_RNA %>%
+    group_by(cluster) %>%
+    # filter(avg_log2FC > 1) %>% 
+    top_n(n = 20, wt = avg_log2FC) -> top_on_RNA
+
 FindAllMarkers(rna.integrated.cluster.rest, 
                test.use = "MAST",
                only.pos = TRUE, 
@@ -137,7 +223,7 @@ manual_markers <- tibble(p_val = NA,
                         pct.1 = NA,
                         pct.2 = NA,
                         p_val_adj = NA,
-                        cluster = factor(c(5, 1), levels = c(0,1,2,3,4,5,6,7,8)),
+                        cluster = factor(c(5, 1), levels = c(0,1,2,3,4,5,6,7,8,"neurons")),
                         gene = c("lck", "mpeg1.2")
                         )
 
@@ -161,7 +247,7 @@ norm_vector <- as.vector(table(Idents(rna.integrated.cluster.rest))/100)
 expressing_cells_per_cluster_matrix <- t(t(expressing_cells_per_cluster_matrix)/norm_vector)
 
 to_heatmap_rest <- expressing_cells_per_cluster_matrix[top_markers_comb$gene,]
-colnames(to_heatmap_rest) <- paste0("Cluster ", colnames(avg_integrated_rest))
+colnames(to_heatmap_rest) <- paste0("Cluster ", names(table(Idents(rna.integrated.cluster.rest))))
 rows_annot <- top_markers_comb[,c("gene_cluster", "cluster")]
 rows_annot$cl <- "Cluster"
 rows_annot <- as.data.frame(unite(rows_annot, "cluster", c("cl", "cluster"), sep = " "))
@@ -174,19 +260,19 @@ rownames(to_heatmap_rest) <- top_markers_comb$gene_cluster
 breakpoints <- seq(0, 100, by = 10)
 breakpoints[2] <- 0.1
 cols <- colorRampPalette(RColorBrewer::brewer.pal(n = 11, name = "PuBu"))(length(breakpoints))
-pheatmap::pheatmap(to_heatmap_rest, 
-                   cluster_cols = FALSE, 
-                   cluster_rows = FALSE, 
-                   labels_row = gene_names_heatmap,
-                   breaks = breakpoints,
-                   color = cols,
-                   # display_numbers = TRUE,
-                   # scale = "row",
-                   annotation_row = rows_annot
-                   )-> heatmap_rest_avg
-pdf(file = "plots/scRNA_non_erythrocytes_heatmap_markers_9_clusters_percentage_of_expressing_cells_in_a_cluster_MORE_MARKERS.pdf", height = 42)
-heatmap_rest_avg
-dev.off()
+# pheatmap::pheatmap(to_heatmap_rest, 
+#                    cluster_cols = FALSE, 
+#                    cluster_rows = FALSE, 
+#                    labels_row = gene_names_heatmap,
+#                    breaks = breakpoints,
+#                    color = cols,
+#                    # display_numbers = TRUE,
+#                    # scale = "row",
+#                    annotation_row = rows_annot
+#                    )-> heatmap_rest_avg
+# pdf(file = "plots/scRNA_non_erythrocytes_heatmap_markers_10_clusters_percentage_of_expressing_cells_in_a_cluster_MORE_MARKERS.pdf", height = 42)
+# heatmap_rest_avg
+# dev.off()
 
 pheatmap::pheatmap(t(scale(t(to_heatmap_rest), center = FALSE)), 
                    cluster_cols = FALSE, 
@@ -198,7 +284,7 @@ pheatmap::pheatmap(t(scale(t(to_heatmap_rest), center = FALSE)),
                    # scale = "row",
                    annotation_row = rows_annot
                    )-> heatmap_rest_avg_with_num
-pdf(file = "plots/scRNA_non_erythrocytes_heatmap_markers_9_clusters_percentage_of_expressing_cells_in_a_cluster_MORE_MARKERS_with_numbers.pdf", height = 42)
+pdf(file = "plots/scRNA_non_erythrocytes_heatmap_markers_10_clusters_percentage_of_expressing_cells_in_a_cluster_MORE_MARKERS_with_numbers.pdf", height = 42)
 heatmap_rest_avg_with_num
 dev.off()
 ```
@@ -446,7 +532,7 @@ VlnPlot(object = rna.integrated.cluster.rest,
 
 
 ```{r}
-new_cluster_labels <- c("leukocytes_1", "macrophages", "gill_integument", "low_quality", "neutrophils", "lymphocytes", "ionocytes", "epithelium", "leukocytes_2")
+new_cluster_labels <- c("leukocytes_1", "macrophages", "gill_integument", "low_quality", "neutrophils", "lymphocytes", "ionocytes", "epithelium", "leukocytes_2", "neurons")
 names(new_cluster_labels) <- levels(rna.integrated.cluster.rest)
 rna.integrated.cluster.rest_annotated <- RenameIdents(rna.integrated.cluster.rest, new_cluster_labels)
 pdf(file = "plots/for_article/Suppl_scRNA_umap_rest_very_high_res_3_ANNOTATED.pdf")
@@ -580,7 +666,7 @@ dev.off()
 
 ```{r fig.width=12}
 VlnPlot(object = integrated_rest_extreme_res,
-  features = c("coro1a", "arpc1b", "zgc:64051", "ptprc", "lck", "mpeg1.2", "ENSGACG00000001123"), 
+  features = c("coro1a", "arpc1b", "zgc:64051", "ptprc", "lck", "mpeg1.2", "ENSGACG00000001123", "ncf1"), 
   assay = "RNA", 
   same.y.lims = TRUE
   )
@@ -643,3 +729,11 @@ pdf(file = "plots/test/scRNA_non_erythrocytes_heatmap_TESTING_extreme_subcluster
 heatmap_rest_avg_with_num
 dev.off()
 ```
+
+
+```{r fig.width=9}
+DefaultAssay(rna.integrated.cluster.rest_annotated) <- "RNA"
+Nebulosa::plot_density(rna.integrated.cluster.rest_annotated, c("atp1a1a.4", "slc4a1b", "atp1b1b"), joint = TRUE, slot = "counts")
+DefaultAssay(rna.integrated.cluster.rest_annotated) <- "integrated"
+```
+
