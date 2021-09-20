@@ -137,6 +137,11 @@ rna.integrated.cluster.rest_annotated <- RenameIdents(rna.integrated.cluster.res
 ```
 
 ```{r}
+saveRDS(rna.integrated.cluster.rest_annotated, file = "data/rna_integrated_cluster_rest_annotated.Rds")
+```
+
+
+```{r}
 #Set color pallete for Clusters
 nclusters <- length(levels(Idents(rna.integrated.cluster.rest_annotated)))
 cluster_color_pallete <- RColorBrewer::brewer.pal(n = nclusters, name = 'Paired')
@@ -210,6 +215,15 @@ manual_markers <- tibble(p_val = NA,
                         )
 
 exclude_markers <- c("atp6v1g1", "UBL5", "ENSGACG00000009225", "acod1", "tsr3", "atp6v1e1b", "rpl22l1", "ENSGACG00000020069", "ddx18", "cnbpa", "sh2d1ab", "ENSGACG00000012769", "tnfsf14", "ENSGACG00000004750", "ENSGACG00000009171", "ENSGACG00000018643", "sla1a", "tagln2", "rpl19", "sftpbb", "nme2a", "nkl.4", "rpl29", "eif3i", "zgc:162944", "tubb2b", "ran", "rps13", "rps7", "fance", "rpl23a", "ENSGACG00000000326", "rplp2l", "ENSGACG00000000860", "ENSGACG00000007836", "rplp0", "rps26", "RPL19 (1 of many)", "rpl13a", "atp6v1g1", "UBL5", "ENSGACG00000009225", "ENSGACG00000007536", "ENSGACG00000001108", "cndp2", "fabp3", "zgc:152830", "mdh1aa", "ENSGACG00000000869", "rpl35a", "rps9", "rpl35", "ENSGACG00000013895", "HBE1 (1 of many)", "ENSGACG0000001390", "ENSGACG00000001394", "hbae5", "h2afva", "scinla", "ENSGACG00000020692", "ENSGACG00000001436", "capn2b", "chmp4c", "chmp2a", "gstr (1 of many)", "rhbg", "rdh12l", "si:dkey−87o1.2", "ENSGACG00000008205", "id4", "krt8", "ENSGACG00000006166", "ENSGACG00000006236", "ENSGACG00000004882", "ENSGACG00000017697", "nrarpa", "capn2b", "zgc:86896", "camk2g2", "cyp46a1.4", "plcg2", "plecb", "ENSGACG00000013902", "tpm4a", "sptbn2", "lmo7a", "pfkpb", "CKB", "itgb2", "tank", "scinlb", "nop56", "ENSGACG00000007176", "ENSGACG00000006275", "sat1b", "si:dkey−87o1.2", "HBE1 (1 of many).1")
+
+rbind(top_by_logfc, top_on_RNA, top_MAST, manual_markers) %>% 
+  transform(gene_cluster = paste0(gene, "_", cluster)) %>% 
+  group_by(gene_cluster) %>%
+  sample_n(1) %>%  # dropping duplicate markers
+  arrange(cluster, -avg_log2FC) %>% 
+  ungroup() %>% 
+  dplyr::select(-c(gene_cluster)) %>% 
+  write_delim(file = "data/Suppl_table_scRNA_no_erythro_cluster_markers_res_03_labeled.tsv", delim = "\t")
 
 rbind(top_by_logfc, top_on_RNA, top_MAST, manual_markers) %>% 
   transform(gene_cluster = paste0(gene, "_", cluster)) %>% 
