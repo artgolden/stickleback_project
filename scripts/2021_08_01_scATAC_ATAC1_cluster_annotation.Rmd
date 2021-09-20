@@ -35,16 +35,35 @@ atac1 <- readRDS(file = "data/scATAC/atac1_obj_qc_clusters_calculated_RNA.rds")
 
 
 ```{r}
-DimPlot(atac1, label = TRUE)
+set.seed(42)
+atac1_no_erythro <- subset(atac1, idents = setdiff(unique(Idents(atac1)), c(0,1,5)))
+atac1_no_erythro <- RunUMAP(
+  object = atac1_no_erythro,
+  reduction = 'lsi',
+  dims = 2:30
+)
+atac1_no_erythro <- FindNeighbors(
+  object = atac1_no_erythro,
+  reduction = 'lsi',
+  dims = 2:30
+)
+atac1_no_erythro <- FindClusters(
+  object = atac1_no_erythro,
+  algorithm = 3,
+  resolution = 2.5,
+  verbose = FALSE
+)
+DimPlot(atac1_no_erythro, label = TRUE)
+
 ```
 
 ```{r}
-atac1@assays[["RNA"]]@counts@Dimnames[[1]][agrep("ENSGACG", atac1@assays[["RNA"]]@counts@Dimnames[[1]])]
+atac1_no_erythro@assays[["RNA"]]@counts@Dimnames[[1]][agrep("ENSGACG", atac1_no_erythro@assays[["RNA"]]@counts@Dimnames[[1]])]
 
 ```
 
 ```{r}
-rna.integrated.cluster.rest_annotated <- readRDS( file = "data/rna_integrated_cluster_rest_annotated.RData")
+rna.integrated.cluster.rest_annotated <- readRDS( file = "data/rna_integrated_cluster_rest_annotated.Rds")
 ```
 
 
@@ -52,7 +71,7 @@ rna.integrated.cluster.rest_annotated <- readRDS( file = "data/rna_integrated_cl
 transfer.anchors <- FindTransferAnchors(
   reference = rna.integrated.cluster.rest_annotated,
   features = rna.integrated.cluster.rest_annotated@assays[["integrated"]]@data@Dimnames[[1]],
-  query = atac1,
+  query = atac1_no_erythro,
   reduction = 'cca', 
   reference.assay = "integrated",
   query.assay = "RNA"
@@ -61,17 +80,28 @@ transfer.anchors <- FindTransferAnchors(
 
 ```{r}
 celltype.predictions <- TransferData(anchorset = transfer.anchors, refdata = Idents(rna.integrated.cluster.rest_annotated), 
-    weight.reduction = atac1[["lsi"]], dims = 1:30)
-atac1 <- AddMetaData(atac1, metadata = celltype.predictions)
+    weight.reduction = atac1_no_erythro[["lsi"]], dims = 1:30)
+atac1_no_erythro <- AddMetaData(atac1_no_erythro, metadata = celltype.predictions)
 ```
 
-```{r fig.height=12}
-DimPlot(atac1, group.by = "predicted.id", pt.size = 2)
+```{r fig.width=11}
+# cluster_color_pallete <- RColorBrewer::brewer.pal(n = 12, name = 'Paired')
+
+atac1_transfered_labels_plot <- DimPlot(atac1_no_erythro, group.by = "predicted.id", pt.size = 1, label = TRUE, cols = RColorBrewer::brewer.pal(n = 10, name = 'Paired'), repel = TRUE)
+# atac1_annot_plot <- DimPlot(atac1, label = TRUE, repel = TRUE, pt.size = 1.5, cols = RColorBrewer::brewer.pal(n = 10, name = 'Paired'))
+png(file = "plots/for_article_png/Suppl_scATAC_UMAP_atac1_without_erythro_direct_label_transfer.png", 
+    res = 300, 
+    units = "in",
+    width = 10.5,
+    height = 9)
+atac1_transfered_labels_plot
+dev.off()
+atac1_transfered_labels_plot
 ```
 
 
 ```{r fig.height=27}
-VlnPlot(object = atac1,
+VlnPlot(object = atac1_no_erythro,
   features = c("npsn (1 of many)", "ENSGACG00000020145", "atp1b1b", "pygl", "Ita4h", "atp1a1a.2", "pgd", "msna", "prf1.9", "lck", "mpx", "mpeg1.2", "irf8", "coro1a", "arpc1b", "zgc:64051", "rhcga", "TYMP", "ca15b", "krt99", "krt98", "krt97", "apodb", "fbp2", "ncf1", "ENSGACG00000004882", "g6pd", "sftpbb", "tnfsf14", "ENSGACG00000012769", "ENSGACG00000010720", "cd79a", "mmp9", "taldo1", "tktb", "TSC22D1", "arg2", "S100P", "cdh31", "lgals3b", "hbae5", "ncf2", "krt8", "capn2b"), 
   assay = "RNA", 
   same.y.lims = TRUE
@@ -86,6 +116,64 @@ VlnPlot(object = atac1,
   same.y.lims = TRUE
   )
 ```
+
+```{r fig.width=11}
+new_cluster_labels <- c("gill_integument", # 0 
+                        "leukocytes_1", # 1
+                        "epithelium", # 2
+                        "leukocytes_1", # 3
+                        "ionocytes", # 4
+                        "leukocytes_1", # 5
+                        "leukocytes_1", # 6
+                        "gill_integument", # 7
+                        "epithelium", # 8
+                        "undefined", # 9
+                        "leukocytes_1", # 10
+                        "neurons", # 11
+                        "leukocytes_2", # 12
+                        "macrophages", # 13
+                        "undefined", # 14
+                        "neutrophils", # 15
+                        "macrophages" # 16
+                      )
+names(new_cluster_labels) <- levels(atac1_no_erythro)
+atac1_no_erythro_annotated <- RenameIdents(atac1_no_erythro, new_cluster_labels)
+DimPlot(atac1_no_erythro_annotated, label = TRUE, repel = TRUE)
+```
+
+```{r}
+new_cluster_ids <- as.character(Idents(atac1))
+names(new_cluster_ids) <- names(Idents(atac1))
+new_cluster_ids <- replace(new_cluster_ids,
+                           as.character(names(Idents(atac1_no_erythro_annotated))),
+                           as.character(Idents(atac1_no_erythro_annotated))
+                           )
+new_cluster_ids <- replace(new_cluster_ids,
+                           new_cluster_ids %in% c("0","1","5"),
+                           "erythrocytes"
+                           )
+new_cluster_ids <- as.factor(new_cluster_ids)
+Idents(object = atac1) <- new_cluster_ids
+atac1_annot_plot <- DimPlot(atac1, label = TRUE, repel = TRUE, pt.size = 1.5, cols = RColorBrewer::brewer.pal(n = 10, name = 'Paired'))
+png(file = "plots/for_article_png/scATAC_UMAP_atac1_annotated.png", 
+    res = 300, 
+    units = "in",
+    width = 11,
+    height = 9)
+atac1_annot_plot
+dev.off()
+svg(file = "plots/for_article/scATAC_UMAP_atac1_annotated.svg", 
+    width = 11,
+    height = 9)
+atac1_annot_plot
+dev.off()
+atac1_annot_plot
+```
+
+```{r}
+saveRDS(atac1, file = "data/atac1_obj_annotated.Rds")
+```
+
 
 
 
