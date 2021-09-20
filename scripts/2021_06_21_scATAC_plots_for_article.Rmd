@@ -262,7 +262,11 @@ plot_gene_distribution <- function(sample_name, sample_obj){
 
 ```{r fig.width=15, fig.height=15}
 atac1_with_rna <- readRDS(file = "data/scATAC/atac1_obj_qc_clusters_calculated_RNA.rds")
-pdf(file = "plots/for_article/Suppl_scATAC_atac1_blood_clusters_identification.pdf", width = 15, height = 15)
+png(file = "plots/for_article_png/Suppl_scATAC_atac1_blood_clusters_identification.png", 
+    res = 400, 
+    units = "in",
+    width = 13,
+    height = 12)
 suppressWarnings(plot_gene_distribution(sample_name = "saline_1", sample_obj = atac1_with_rna))
 dev.off()
 suppressWarnings(plot_gene_distribution(sample_name = "saline_1", sample_obj = atac1_with_rna))
@@ -270,26 +274,38 @@ suppressWarnings(plot_gene_distribution(sample_name = "saline_1", sample_obj = a
 
 ```{r fig.width=15, fig.height=15}
 atac2_with_rna <- readRDS(file = "data/scATAC/atac2_obj_qc_clusters_calculated_RNA.rds")
-pdf(file = "plots/for_article/Suppl_scATAC_atac2_blood_clusters_identification.pdf", width = 15, height = 15)
-suppressWarnings(plot_gene_distribution(sample_name = "saline_1", sample_obj = atac2_with_rna))
+png(file = "plots/for_article_png/Suppl_scATAC_atac2_blood_clusters_identification.png", 
+    res = 400, 
+    units = "in",
+    width = 13,
+    height = 12)
+suppressWarnings(plot_gene_distribution(sample_name = "saline_2", sample_obj = atac2_with_rna))
 dev.off()
-suppressWarnings(plot_gene_distribution(sample_name = "saline_1", sample_obj = atac2_with_rna))
+suppressWarnings(plot_gene_distribution(sample_name = "saline_2", sample_obj = atac2_with_rna))
 ```
 
 ```{r fig.width=15, fig.height=15}
 atac3_with_rna <- readRDS(file = "data/scATAC/atac3_obj_qc_clusters_calculated_RNA.rds")
-pdf(file = "plots/for_article/Suppl_scATAC_atac3_blood_clusters_identification.pdf", width = 15, height = 15)
-suppressWarnings(plot_gene_distribution(sample_name = "saline_1", sample_obj = atac3_with_rna))
+png(file = "plots/for_article_png/Suppl_scATAC_atac3_blood_clusters_identification.png", 
+    res = 400, 
+    units = "in",
+    width = 13,
+    height = 12)
+suppressWarnings(plot_gene_distribution(sample_name = "freshwater_1", sample_obj = atac3_with_rna))
 dev.off()
-suppressWarnings(plot_gene_distribution(sample_name = "saline_1", sample_obj = atac3_with_rna))
+suppressWarnings(plot_gene_distribution(sample_name = "freshwater_1", sample_obj = atac3_with_rna))
 ```
 
 ```{r fig.width=15, fig.height=15}
 atac4_with_rna <- readRDS(file = "data/scATAC/atac4_obj_qc_clusters_calculated_RNA.rds")
-pdf(file = "plots/for_article/Suppl_scATAC_atac4_blood_clusters_identification.pdf", width = 15, height = 15)
-suppressWarnings(plot_gene_distribution(sample_name = "saline_1", sample_obj = atac4_with_rna))
+png(file = "plots/for_article_png/Suppl_scATAC_atac4_blood_clusters_identification.png", 
+    res = 400, 
+    units = "in",
+    width = 13,
+    height = 12)
+suppressWarnings(plot_gene_distribution(sample_name = "freshwater_2", sample_obj = atac4_with_rna))
 dev.off()
-suppressWarnings(plot_gene_distribution(sample_name = "saline_1", sample_obj = atac4_with_rna))
+suppressWarnings(plot_gene_distribution(sample_name = "freshwater_2", sample_obj = atac4_with_rna))
 ```
 
 ```{r}
