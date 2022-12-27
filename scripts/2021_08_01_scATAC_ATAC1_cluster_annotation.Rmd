@@ -153,8 +153,27 @@ new_cluster_ids <- replace(new_cluster_ids,
                            "erythrocytes"
                            )
 new_cluster_ids <- as.factor(new_cluster_ids)
+new_factor_levels <- replace(
+                             levels(rna.integrated.cluster.rest_annotated@active.ident),
+                             levels(rna.integrated.cluster.rest_annotated@active.ident) == "low_quality",
+                             "undefined"
+                             )
+new_factor_levels <- replace(
+                             new_factor_levels,
+                             levels(rna.integrated.cluster.rest_annotated@active.ident) == "lymphocytes",
+                             "erythrocytes"
+                             )
+
+new_cluster_ids <- factor(new_cluster_ids, levels = new_factor_levels
+                            )
 Idents(object = atac1) <- new_cluster_ids
-atac1_annot_plot <- DimPlot(atac1, label = TRUE, repel = TRUE, pt.size = 1.5, cols = RColorBrewer::brewer.pal(n = 10, name = 'Paired'))
+
+atac1_annot_plot <- DimPlot(atac1,
+                            label = TRUE,
+                            repel = TRUE,
+                            pt.size = 1,
+                            cols = RColorBrewer::brewer.pal(n = 10, name = 'Paired')
+                            ) + coord_fixed(ratio = 1)
 png(file = "plots/for_article_png/scATAC_UMAP_atac1_annotated.png", 
     res = 300, 
     units = "in",
@@ -163,8 +182,7 @@ png(file = "plots/for_article_png/scATAC_UMAP_atac1_annotated.png",
 atac1_annot_plot
 dev.off()
 svg(file = "plots/for_article/scATAC_UMAP_atac1_annotated.svg", 
-    width = 11,
-    height = 9)
+)
 atac1_annot_plot
 dev.off()
 atac1_annot_plot
@@ -174,7 +192,31 @@ atac1_annot_plot
 saveRDS(atac1, file = "data/atac1_obj_annotated.Rds")
 ```
 
+```{r}
+# atac1 <- readRDS(file = "data/atac1_obj_annotated.Rds")
+```
 
+```{r}
+vln_plot <- VlnPlot(object = atac1,
+  features = "HBE1", 
+  assay = "RNA", 
+  same.y.lims = TRUE,
+  cols = RColorBrewer::brewer.pal(n = 10, name = 'Paired')
+  ) 
+vln_plot
+pdf(file = "plots/for_article/scATAC_HBE1_violin_plot_after_annotation.pdf")
+vln_plot
+dev.off()
+```
+
+
+```{r}
+DefaultAssay(atac1) <- "RNA"
+hbe1_density_plot <- Nebulosa::plot_density(atac1, features = "HBE1", size = 1.5) + coord_fixed(ratio = 1)
+pdf(file = "plots/for_article/scATAC_HBE1_density_plot_after_annotation.pdf")
+hbe1_density_plot
+dev.off()
+```
 
 
 
