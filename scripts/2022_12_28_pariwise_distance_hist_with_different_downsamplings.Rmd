@@ -1,0 +1,346 @@
+---
+title: "Pairwise PCA distance histogram with variable downsampling"
+date: "`r Sys.Date()`"
+author: "Artemiy Golden"
+output:
+  rmdformats::robobook:
+    code_folding: hide
+    self_contained: true
+    thumbnails: false
+    lightbox: true
+---
+
+
+```{r setup, include=FALSE}
+library(knitr)
+## Global options
+options(max.print = "75")
+knitr::opts_chunk$set(
+  echo = TRUE, cache = TRUE, prompt = FALSE,
+  tidy = FALSE, comment = NA,
+  message = FALSE, warning = FALSE
+)
+opts_knit$set(width = 75)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+library(Seurat)
+library(ggpubr)
+library(venn)
+library(clusterProfiler)
+library(biomaRt)
+library(enrichplot)
+```
+
+```{r}
+# + do pairwise distance histogram for each sample separately 
+# - do downsampling progressively reducing by 10%
+```
+
+```{r pairwise_histogram_for_each_sample_no_downsampling, fig.width=11}
+load(file = "data/rna.integrated.filtered.after.clustering.obj.RData")
+rna.integrated.cluster.blood <- subset(rna.integrated, idents = 0)
+
+
+set.seed(NULL)
+cell_id_sample <- tibble(
+  id = names(Idents(rna.integrated.cluster.blood)),
+  sample = rna.integrated.cluster.blood@meta.data[["orig.ident"]])
+
+
+rna.integrated.cluster.blood <- FindNeighbors(rna.integrated.cluster.blood, dims = 1:15)
+rna.integrated.cluster.blood <- RunPCA(rna.integrated.cluster.blood)
+
+
+pca_raw_blood <- as.data.frame(rna.integrated.cluster.blood@reductions[["pca"]]@cell.embeddings)
+pca_raw_blood$sample <- rna.integrated.cluster.blood@meta.data[["orig.ident"]]
+pca_raw_blood <- pca_raw_blood[sample(nrow(pca_raw_blood)), c("PC_1", "PC_2","PC_3","PC_4","PC_5","PC_6","PC_7","PC_8","PC_9","PC_10","sample")]
+```
+
+
+```{r, fig.width=11}
+set.seed(NULL)
+pca_saline_1_1 <- subset(pca_raw_blood, sample == "stickleback.sample.1")[,1:10] %>% slice_sample(prop = 0.5)
+pca_saline_1_2 <- subset(pca_raw_blood, sample == "stickleback.sample.1")[,1:10] %>% filter(! rownames(.) %in% rownames(pca_saline_1_1))
+pca_saline_2_1 <- subset(pca_raw_blood, sample == "stickleback.sample.2")[,1:10] %>% slice_sample(prop = 0.5)
+pca_saline_2_2 <- subset(pca_raw_blood, sample == "stickleback.sample.2")[,1:10] %>% filter(! rownames(.) %in% rownames(pca_saline_2_1))
+ 
+dist_matrix_S1 <- fields::rdist(pca_saline_1_1, pca_saline_1_2)
+dist_matrix_S2 <- fields::rdist(pca_saline_2_1, pca_saline_2_2)
+
+pca_freshwater_3_1 <- subset(pca_raw_blood, sample == "stickleback.sample.3")[,1:10] %>% slice_sample(prop = 0.5)
+pca_freshwater_3_2 <- subset(pca_raw_blood, sample == "stickleback.sample.3")[,1:10] %>% filter(! rownames(.) %in% rownames(pca_freshwater_3_1))
+pca_freshwater_4_1 <- subset(pca_raw_blood, sample == "stickleback.sample.4")[,1:10] %>% slice_sample(prop = 0.5)
+pca_freshwater_4_2 <- subset(pca_raw_blood, sample == "stickleback.sample.4")[,1:10] %>% filter(! rownames(.) %in% rownames(pca_freshwater_4_1))
+
+dist_matrix_F3 <- fields::rdist(pca_freshwater_3_1, pca_freshwater_3_2)
+dist_matrix_F4 <- fields::rdist(pca_freshwater_4_1, pca_freshwater_4_2)
+
+frame_for_hist <- data.frame(dist = c(as.vector(dist_matrix_S1), as.vector(dist_matrix_S2), as.vector(dist_matrix_F3), as.vector(dist_matrix_F4)),
+                             pair = c(
+                                      rep("S1_vs_S1", length(dist_matrix_S1)),
+                                      rep("S2_vs_S2", length(dist_matrix_S2)),
+                                      rep("F3_vs_F3", length(dist_matrix_F3)),
+                                      rep("F4_vs_F4", length(dist_matrix_F4))
+                                      ))
+
+mu_btw <- plyr::ddply(frame_for_hist, "pair", summarise, grp.mean=mean(dist))
+
+small_frame_for_hist <- frame_for_hist[sample(nrow(frame_for_hist), 100000),]
+
+p <- ggplot(small_frame_for_hist, aes(x=dist, fill=pair, color=pair)) +
+  geom_histogram(aes(y = ..ncount..), position="identity", alpha=0.5, binwidth = 0.15) + 
+  geom_vline(data=mu_btw, aes(xintercept=grp.mean, color=pair),
+             linetype="dashed")+
+  # coord_cartesian(xlim = c(0, 15)) +
+  theme_classic(base_size = 20) +
+  xlab("Distance between pair of cells") +
+  ylab("Number cell pairs")
+p
+
+mu_btw
+```
+I have resampled the results several times, and the mean values are stable within the 0.01.
+
+
+```{r, include=FALSE}
+
+# 
+# cell_id_sample_downsampled <- cell_id_sample %>%
+#   dplyr::filter(sample != "stickleback.sample.1") %>% 
+#   dplyr::group_by(sample) %>%
+#   slice_sample(n = minimum_cells_per_sample * 1.2) %>% 
+#   full_join(y = cell_id_sample[cell_id_sample$sample == "stickleback.sample.1",])
+# 
+# table(cell_id_sample_downsampled$sample)
+```
+
+```{r, include=FALSE}
+# get_mean_pairwise_dist <- function(ratio_of_downsampling_compared_to_1_sample, seurat_obj){
+#   
+#   cell_id_sample <- tibble(
+#   id = names(Idents(seurat_obj)),
+#   sample = seurat_obj@meta.data[["orig.ident"]])
+#   
+#   cell_id_sample_downsampled <- cell_id_sample %>%
+#   dplyr::filter(sample != "stickleback.sample.1") %>% 
+#   dplyr::group_by(sample) %>%
+#   slice_sample(n = minimum_cells_per_sample * ratio_of_downsampling_compared_to_1_sample) %>% 
+#   full_join(y = cell_id_sample[cell_id_sample$sample == "stickleback.sample.1",])
+#   
+#   blood_obj_downsampled <- subset(seurat_obj, cells = cell_id_sample_downsampled$id)
+# 
+#   blood_obj_downsampled <- FindNeighbors(blood_obj_downsampled, dims = 1:15)
+#   blood_obj_downsampled <- RunPCA(blood_obj_downsampled)
+#   
+#   
+#   pca_raw_blood <- as.data.frame(blood_obj_downsampled@reductions[["pca"]]@cell.embeddings)
+#   pca_raw_blood$sample <- blood_obj_downsampled@meta.data[["orig.ident"]]
+#   pca_raw_blood <- pca_raw_blood[sample(nrow(pca_raw_blood)), c("PC_1", "PC_2","PC_3","PC_4","PC_5","PC_6","PC_7","PC_8","PC_9","PC_10","sample")]
+#   
+#   pca_saline_1_half <- subset(pca_raw_blood, sample == "stickleback.sample.1")[,1:10]
+#   pca_saline_2_half <- subset(pca_raw_blood, sample == "stickleback.sample.2")[,1:10]
+#    
+#   dist_matrix_salineVsaline <- fields::rdist(pca_saline_1_half, pca_saline_2_half)
+#   
+#   pca_freshwater_1_half <- subset(pca_raw_blood, sample == "stickleback.sample.3")[,1:10]
+#   pca_freshwater_2_half <- subset(pca_raw_blood, sample == "stickleback.sample.4")[,1:10]
+#   
+#   dist_matrix_freshwaterVfreshwater <- fields::rdist(pca_freshwater_1_half, pca_freshwater_2_half)
+#   
+#   frame_for_hist <- data.frame(dist = c(as.vector(dist_matrix_salineVsaline), as.vector(dist_matrix_freshwaterVfreshwater)),
+#                                pair = c(rep("salineVsaline", length(dist_matrix_salineVsaline)),
+#                                         rep("freshwaterVfreshwater", length(dist_matrix_freshwaterVfreshwater))))
+#   
+#   mu_btw <- plyr::ddply(frame_for_hist, "pair", summarise, grp.mean=mean(dist)) %>% 
+#     mutate(downsampling_ratio = as.character(ratio_of_downsampling_compared_to_1_sample)) 
+#   return(mu_btw)
+# }
+```
+
+```{r, include=FALSE}
+# mean_pairwise_dist <- tibble(pair = character(), 
+#                              grp.mean = numeric(),
+#                              downsampling_ratio = numeric())
+# means_list <- for(ratio in seq(0.8, 2.0, by = 0.4)) {
+#   means <- get_mean_pairwise_dist(ratio_of_downsampling_compared_to_1_sample = ratio, seurat_obj = rna.integrated.cluster.blood) 
+#   mean_pairwise_dist <- mean_pairwise_dist %>% full_join(means)
+# }
+```
+
+```{r}
+minimum_cells_per_sample <- min(table(rna.integrated.cluster.blood@meta.data[["orig.ident"]]))
+```
+
+
+
+```{r, fig.width=11}
+ratio_of_downsampling_compared_to_1_sample = 0.8
+seurat_obj = rna.integrated.cluster.blood
+
+  cell_id_sample <- tibble(
+  id = names(Idents(seurat_obj)),
+  sample = seurat_obj@meta.data[["orig.ident"]])
+  
+  cell_id_sample_downsampled <- cell_id_sample %>%
+  dplyr::filter(sample != "stickleback.sample.1") %>% 
+  dplyr::group_by(sample) %>%
+  slice_sample(n = minimum_cells_per_sample * ratio_of_downsampling_compared_to_1_sample) %>% 
+  full_join(y = cell_id_sample[cell_id_sample$sample == "stickleback.sample.1",])
+  
+  blood_obj_downsampled <- subset(seurat_obj, cells = cell_id_sample_downsampled$id)
+
+  blood_obj_downsampled <- FindNeighbors(blood_obj_downsampled, dims = 1:15)
+  blood_obj_downsampled <- RunPCA(blood_obj_downsampled)
+  
+  
+  pca_raw_blood <- as.data.frame(blood_obj_downsampled@reductions[["pca"]]@cell.embeddings)
+  pca_raw_blood$sample <- blood_obj_downsampled@meta.data[["orig.ident"]]
+  pca_raw_blood <- pca_raw_blood[sample(nrow(pca_raw_blood)), c("PC_1", "PC_2","PC_3","PC_4","PC_5","PC_6","PC_7","PC_8","PC_9","PC_10","sample")]
+  
+  pca_saline_1_half <- subset(pca_raw_blood, sample == "stickleback.sample.1")[,1:10]
+  pca_saline_2_half <- subset(pca_raw_blood, sample == "stickleback.sample.2")[,1:10]
+   
+  dist_matrix_salineVsaline <- fields::rdist(pca_saline_1_half, pca_saline_2_half)
+  
+  pca_freshwater_1_half <- subset(pca_raw_blood, sample == "stickleback.sample.3")[,1:10]
+  pca_freshwater_2_half <- subset(pca_raw_blood, sample == "stickleback.sample.4")[,1:10]
+  
+  dist_matrix_freshwaterVfreshwater <- fields::rdist(pca_freshwater_1_half, pca_freshwater_2_half)
+  
+  frame_for_hist <- data.frame(dist = c(as.vector(dist_matrix_salineVsaline), as.vector(dist_matrix_freshwaterVfreshwater)),
+                               pair = c(rep("salineVsaline", length(dist_matrix_salineVsaline)),
+                                        rep("freshwaterVfreshwater", length(dist_matrix_freshwaterVfreshwater))))
+  
+  mu_btw <- plyr::ddply(frame_for_hist, "pair", summarise, grp.mean=mean(dist)) %>% 
+    mutate(ratio_of_num_cells_in_other_samples_compared_to_Saline1 = as.character(ratio_of_downsampling_compared_to_1_sample)) 
+  
+small_frame_for_hist <- frame_for_hist[sample(nrow(frame_for_hist), 100000),]
+
+p <- ggplot(small_frame_for_hist, aes(x=dist, fill=pair, color=pair)) +
+  geom_histogram(aes(y = ..ncount..), position="identity", alpha=0.5, binwidth = 0.15) + 
+  geom_vline(data=mu_btw, aes(xintercept=grp.mean, color=pair),
+             linetype="dashed")+
+  # coord_cartesian(xlim = c(0, 15)) +
+  theme_classic(base_size = 20) +
+  xlab("Distance between pair of cells") +
+  ylab("Number cell pairs")
+p
+mu_btw
+table(cell_id_sample_downsampled$sample)
+```
+
+
+```{r, fig.width=11}
+ratio_of_downsampling_compared_to_1_sample = 1.4
+seurat_obj = rna.integrated.cluster.blood
+
+  cell_id_sample <- tibble(
+  id = names(Idents(seurat_obj)),
+  sample = seurat_obj@meta.data[["orig.ident"]])
+  
+  cell_id_sample_downsampled <- cell_id_sample %>%
+  dplyr::filter(sample != "stickleback.sample.1") %>% 
+  dplyr::group_by(sample) %>%
+  slice_sample(n = minimum_cells_per_sample * ratio_of_downsampling_compared_to_1_sample) %>% 
+  full_join(y = cell_id_sample[cell_id_sample$sample == "stickleback.sample.1",])
+  
+  blood_obj_downsampled <- subset(seurat_obj, cells = cell_id_sample_downsampled$id)
+
+  blood_obj_downsampled <- FindNeighbors(blood_obj_downsampled, dims = 1:15)
+  blood_obj_downsampled <- RunPCA(blood_obj_downsampled)
+  
+  
+  pca_raw_blood <- as.data.frame(blood_obj_downsampled@reductions[["pca"]]@cell.embeddings)
+  pca_raw_blood$sample <- blood_obj_downsampled@meta.data[["orig.ident"]]
+  pca_raw_blood <- pca_raw_blood[sample(nrow(pca_raw_blood)), c("PC_1", "PC_2","PC_3","PC_4","PC_5","PC_6","PC_7","PC_8","PC_9","PC_10","sample")]
+  
+  pca_saline_1_half <- subset(pca_raw_blood, sample == "stickleback.sample.1")[,1:10]
+  pca_saline_2_half <- subset(pca_raw_blood, sample == "stickleback.sample.2")[,1:10]
+   
+  dist_matrix_salineVsaline <- fields::rdist(pca_saline_1_half, pca_saline_2_half)
+  
+  pca_freshwater_1_half <- subset(pca_raw_blood, sample == "stickleback.sample.3")[,1:10]
+  pca_freshwater_2_half <- subset(pca_raw_blood, sample == "stickleback.sample.4")[,1:10]
+  
+  dist_matrix_freshwaterVfreshwater <- fields::rdist(pca_freshwater_1_half, pca_freshwater_2_half)
+  
+  frame_for_hist <- data.frame(dist = c(as.vector(dist_matrix_salineVsaline), as.vector(dist_matrix_freshwaterVfreshwater)),
+                               pair = c(rep("salineVsaline", length(dist_matrix_salineVsaline)),
+                                        rep("freshwaterVfreshwater", length(dist_matrix_freshwaterVfreshwater))))
+  
+  mu_btw <- plyr::ddply(frame_for_hist, "pair", summarise, grp.mean=mean(dist)) %>% 
+    mutate(ratio_of_num_cells_in_other_samples_compared_to_Saline1 = as.character(ratio_of_downsampling_compared_to_1_sample)) 
+  
+small_frame_for_hist <- frame_for_hist[sample(nrow(frame_for_hist), 100000),]
+
+p <- ggplot(small_frame_for_hist, aes(x=dist, fill=pair, color=pair)) +
+  geom_histogram(aes(y = ..ncount..), position="identity", alpha=0.5, binwidth = 0.15) + 
+  geom_vline(data=mu_btw, aes(xintercept=grp.mean, color=pair),
+             linetype="dashed")+
+  # coord_cartesian(xlim = c(0, 15)) +
+  theme_classic(base_size = 20) +
+  xlab("Distance between pair of cells") +
+  ylab("Number cell pairs")
+p
+mu_btw
+table(cell_id_sample_downsampled$sample)
+```
+
+```{r, fig.width=11}
+ratio_of_downsampling_compared_to_1_sample = 2
+seurat_obj = rna.integrated.cluster.blood
+
+  cell_id_sample <- tibble(
+  id = names(Idents(seurat_obj)),
+  sample = seurat_obj@meta.data[["orig.ident"]])
+  
+  cell_id_sample_downsampled <- cell_id_sample %>%
+  dplyr::filter(sample != "stickleback.sample.1") %>% 
+  dplyr::group_by(sample) %>%
+  slice_sample(n = minimum_cells_per_sample * ratio_of_downsampling_compared_to_1_sample) %>% 
+  full_join(y = cell_id_sample[cell_id_sample$sample == "stickleback.sample.1",])
+  
+  blood_obj_downsampled <- subset(seurat_obj, cells = cell_id_sample_downsampled$id)
+
+  blood_obj_downsampled <- FindNeighbors(blood_obj_downsampled, dims = 1:15)
+  blood_obj_downsampled <- RunPCA(blood_obj_downsampled)
+  
+  
+  pca_raw_blood <- as.data.frame(blood_obj_downsampled@reductions[["pca"]]@cell.embeddings)
+  pca_raw_blood$sample <- blood_obj_downsampled@meta.data[["orig.ident"]]
+  pca_raw_blood <- pca_raw_blood[sample(nrow(pca_raw_blood)), c("PC_1", "PC_2","PC_3","PC_4","PC_5","PC_6","PC_7","PC_8","PC_9","PC_10","sample")]
+  
+  pca_saline_1_half <- subset(pca_raw_blood, sample == "stickleback.sample.1")[,1:10]
+  pca_saline_2_half <- subset(pca_raw_blood, sample == "stickleback.sample.2")[,1:10]
+   
+  dist_matrix_salineVsaline <- fields::rdist(pca_saline_1_half, pca_saline_2_half)
+  
+  pca_freshwater_1_half <- subset(pca_raw_blood, sample == "stickleback.sample.3")[,1:10]
+  pca_freshwater_2_half <- subset(pca_raw_blood, sample == "stickleback.sample.4")[,1:10]
+  
+  dist_matrix_freshwaterVfreshwater <- fields::rdist(pca_freshwater_1_half, pca_freshwater_2_half)
+  
+  frame_for_hist <- data.frame(dist = c(as.vector(dist_matrix_salineVsaline), as.vector(dist_matrix_freshwaterVfreshwater)),
+                               pair = c(rep("salineVsaline", length(dist_matrix_salineVsaline)),
+                                        rep("freshwaterVfreshwater", length(dist_matrix_freshwaterVfreshwater))))
+  
+  mu_btw <- plyr::ddply(frame_for_hist, "pair", summarise, grp.mean=mean(dist)) %>% 
+    mutate(ratio_of_num_cells_in_other_samples_compared_to_Saline1 = as.character(ratio_of_downsampling_compared_to_1_sample)) 
+small_frame_for_hist <- frame_for_hist[sample(nrow(frame_for_hist), 100000),]
+
+p <- ggplot(small_frame_for_hist, aes(x=dist, fill=pair, color=pair)) +
+  geom_histogram(aes(y = ..ncount..), position="identity", alpha=0.5, binwidth = 0.15) + 
+  geom_vline(data=mu_btw, aes(xintercept=grp.mean, color=pair),
+             linetype="dashed")+
+  # coord_cartesian(xlim = c(0, 15)) +
+  theme_classic(base_size = 20) +
+  xlab("Distance between pair of cells") +
+  ylab("Number cell pairs")
+p
+mu_btw
+table(cell_id_sample_downsampled$sample)
+```
+
