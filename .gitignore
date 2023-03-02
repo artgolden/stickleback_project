@@ -17,4 +17,6 @@ scripts/tmp/*
 .config/
 .local/
 .Rproj.user
-
+external/data/*
+*_files
+*_cache
