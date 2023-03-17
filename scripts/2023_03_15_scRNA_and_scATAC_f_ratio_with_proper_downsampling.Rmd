@@ -1,0 +1,355 @@
+---
+title: "F-test for variance between cells in each condition redone with downsampling to the smalest sample"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+## Global options
+options(max.print = "75")
+knitr::opts_chunk$set(
+  echo = TRUE, cache = TRUE, prompt = FALSE,
+  tidy = FALSE, comment = NA,
+  message = FALSE, warning = FALSE
+)
+opts_knit$set(width = 75)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+library(Seurat)
+library(ggpubr)
+library(venn)
+library(clusterProfiler)
+library(biomaRt)
+library(enrichplot)
+```
+
+# scRNA-seq data
+
+```{r scRNA_blood_with_downsampling, fig.width=11}
+load(file = "data/rna.integrated.filtered.after.clustering.obj.RData")
+rna.integrated.cluster.blood <- subset(rna.integrated, idents = 0)
+
+minimum_cells_per_sample <- min(table(rna.integrated.cluster.blood@meta.data[["orig.ident"]]))
+set.seed(42)
+cell_id_sample <- tibble(
+  id = names(Idents(rna.integrated.cluster.blood)),
+  sample = rna.integrated.cluster.blood@meta.data[["orig.ident"]])
+
+cell_id_sample_downsampled <- cell_id_sample %>% 
+  dplyr::group_by(sample) %>% 
+  slice_sample(n = minimum_cells_per_sample)
+
+rna.integrated.cluster.blood <- subset(rna.integrated.cluster.blood, cells = cell_id_sample_downsampled$id)
+```
+
+### F-test histogram for blood cluster for all genes with no filtering
+
+```{r}
+
+saline_right_boundary <- table(rna.integrated.cluster.blood@meta.data[["orig.ident"]])[1] + table(rna.integrated.cluster.blood@meta.data[["orig.ident"]])[2]
+freshwater_left_boundary <- saline_right_boundary + 1
+freshwater_right_boundary <- saline_right_boundary + table(rna.integrated.cluster.blood@meta.data[["orig.ident"]])[3] + table(rna.integrated.cluster.blood@meta.data[["orig.ident"]])[4]
+
+output <- apply(rna.integrated.cluster.blood@assays[["RNA"]]@counts, 1, function(row){
+  x <- row[1:saline_right_boundary]
+  x <- x[x != 0 & is.finite(x)]
+  y <- row[freshwater_left_boundary:(freshwater_right_boundary)]
+  y <- y[y != 0 & is.finite(y)]
+  if(length(x) > 10 & length(y) > 10){
+    saline_var <- var(x)
+    freshwater_var <- var(y)
+    f.test.res <- var.test(x, y)
+    return(data.frame(f_ratio = f.test.res$estimate, p_val = f.test.res$p.value, saline_var = saline_var, freshwater_var = freshwater_var))
+  }else{
+    return(data.frame(f_ratio = NA, p_val = NA, saline_var = NA, freshwater_var = NA))
+  }
+})
+f.test.frame_all_genes <- do.call(rbind,output)
+```
+
+
+
+```{r}
+ f.test.frame_all_genes %>% 
+  filter(is.finite(f_ratio), f_ratio > 0) %>% 
+  ggplot(aes(x=f_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(f_ratio)), color="red", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(0, 5)) +
+  theme_classic(base_size = 20) +
+  xlab("F-ratio") +
+  ylab("Number of genes") -> p_f_ratio_blood
+
+svg(filename = "plots/for_article/scRNA_F_ratio_histogram_for_blood_cluster_all_genes_no_filtering_with_DOWNSAMPLING.svg")
+print(p_f_ratio_blood)
+dev.off()
+png(filename = "plots/for_article_png/scRNA_F_ratio_histogram_for_blood_cluster_all_genes_no_filtering_with_DOWNSAMPLING.png", 
+    res = 300, 
+    units = "in",
+    width = 7,
+    height = 7)
+print(p_f_ratio_blood)
+dev.off()
+p_f_ratio_blood
+```
+### F-test histogram for blood cluster for all genes with no filtering (LOG tranformed F-ratio)
+
+```{r}
+ f.test.frame_all_genes %>% 
+  filter(is.finite(f_ratio), f_ratio > 0) %>% 
+  ggplot(aes(x=log10(f_ratio)))+
+  geom_histogram(binwidth = 0.1, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(log10(f_ratio))), color="red", linetype="dashed", size=1) +
+  # coord_cartesian(xlim = c(0, 5)) +
+  theme_classic(base_size = 20) +
+  xlab("F-ratio") +
+  ylab("Number of genes") -> p_f_ratio_blood
+
+svg(filename = "plots/for_article/scRNA_F_ratio_histogram_for_blood_cluster_all_genes_no_filtering_LOG_tranformed_with_DOWNSAMPLING.svg")
+print(p_f_ratio_blood)
+dev.off()
+png(filename = "plots/for_article_png/scRNA_F_ratio_histogram_for_blood_cluster_all_genes_no_filtering_LOG_tranformed_with_DOWNSAMPLING.png", 
+    res = 300, 
+    units = "in",
+    width = 7,
+    height = 7)
+print(p_f_ratio_blood)
+dev.off()
+p_f_ratio_blood
+```
+F_ratio_median_for_blood_cluster_all_genes_no_filtering_LOG_tranformed_with_DOWNSAMPLING:
+
+```{r}
+f.test.frame_all_genes %>%
+  filter(is.finite(f_ratio), f_ratio > 0) %>% 
+  pull(f_ratio) %>% 
+  median()
+```
+
+## scRNA-seq all cells
+
+
+```{r}
+load(file = "data/rna.integrated.filtered.after.clustering.obj.RData")
+minimum_cells_per_sample <- min(table(rna.integrated@meta.data[["orig.ident"]]))
+set.seed(42)
+cell_id_sample <- tibble(
+  id = names(Idents(rna.integrated)),
+  sample = rna.integrated@meta.data[["orig.ident"]])
+
+cell_id_sample_downsampled <- cell_id_sample %>% 
+  dplyr::group_by(sample) %>% 
+  slice_sample(n = minimum_cells_per_sample)
+
+rna.integrated <- subset(rna.integrated, cells = cell_id_sample_downsampled$id)
+
+saline_right_boundary <- table(rna.integrated@meta.data[["orig.ident"]])[1] + table(rna.integrated@meta.data[["orig.ident"]])[2]
+freshwater_left_boundary <- saline_right_boundary + 1
+freshwater_right_boundary <- saline_right_boundary + table(rna.integrated@meta.data[["orig.ident"]])[3] + table(rna.integrated@meta.data[["orig.ident"]])[4]
+
+output <- apply(rna.integrated@assays[["RNA"]]@counts, 1, function(row){
+  x <- row[1:saline_right_boundary]
+  x <- x[x != 0 & is.finite(x)]
+  y <- row[freshwater_left_boundary:(freshwater_right_boundary)]
+  y <- y[y != 0 & is.finite(y)]
+  if(length(x) > 10 & length(y) > 10){
+    saline_var <- var(x)
+    freshwater_var <- var(y)
+    f.test.res <- var.test(x, y)
+    return(data.frame(f_ratio = f.test.res$estimate, p_val = f.test.res$p.value, saline_var = saline_var, freshwater_var = freshwater_var))
+  }else{
+    return(data.frame(f_ratio = NA, p_val = NA, saline_var = NA, freshwater_var = NA))
+  }
+})
+f.test.frame_all_genes_all_cells <- do.call(rbind,output)
+
+
+```
+
+```{r}
+ f.test.frame_all_genes_all_cells %>% 
+  filter(is.finite(f_ratio), f_ratio > 0) %>% 
+  ggplot(aes(x=f_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(f_ratio)), color="red", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(0, 5)) +
+  theme_classic(base_size = 20) +
+  xlab("F-ratio") +
+  ylab("Number of genes") -> p_f_ratio_blood
+
+svg(filename = "plots/for_article/scRNA_F_ratio_histogram_for_all_cells_all_genes_no_filtering_with_DOWNSAMPLING.svg")
+print(p_f_ratio_blood)
+dev.off()
+png(filename = "plots/for_article_png/scRNA_F_ratio_histogram_for_all_cells_all_genes_no_filtering_with_DOWNSAMPLING.png", 
+    res = 300, 
+    units = "in",
+    width = 7,
+    height = 7)
+print(p_f_ratio_blood)
+dev.off()
+p_f_ratio_blood
+```
+
+
+```{r}
+ f.test.frame_all_genes_all_cells %>% 
+  filter(is.finite(f_ratio), f_ratio > 0) %>% 
+  ggplot(aes(x=log10(f_ratio)))+
+  geom_histogram(binwidth = 0.1, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(log10(f_ratio))), color="red", linetype="dashed", size=1) +
+  # coord_cartesian(xlim = c(0, 5)) +
+  theme_classic(base_size = 20) +
+  xlab("F-ratio") +
+  ylab("Number of genes") -> p_f_ratio_blood
+
+svg(filename = "plots/for_article/scRNA_F_ratio_histogram_for_all_cells_all_genes_no_filtering_LOG_tranformed_with_DOWNSAMPLING.svg")
+print(p_f_ratio_blood)
+dev.off()
+png(filename = "plots/for_article_png/scRNA_F_ratio_histogram_for_all_cells_all_genes_no_filtering_LOG_tranformed_with_DOWNSAMPLING.png", 
+    res = 300, 
+    units = "in",
+    width = 7,
+    height = 7)
+print(p_f_ratio_blood)
+dev.off()
+p_f_ratio_blood
+```
+
+
+# scATAC-seq data
+
+```{r}
+## Sample combining was done in a separate .R script for multithreading utilisation
+load(file = "data/scATAC/combined_scATAC_samples_obj.RData")
+# Creating downsampled object
+minimum_cells_per_sample <- min(table(combined@meta.data[["sample"]]))
+ratio_of_downsampling_compared_to_1_sample = 1
+
+cell_id_sample <- tibble(
+  id = names(Idents(combined)),
+  sample = combined@meta.data[["sample"]])
+
+cell_id_sample_downsampled <- cell_id_sample %>%
+  dplyr::group_by(sample) %>%
+  slice_sample(n = minimum_cells_per_sample * ratio_of_downsampling_compared_to_1_sample) 
+
+combined <- subset(combined, cells = cell_id_sample_downsampled$id)
+```
+
+```{r}
+
+
+saline_length <- table(combined@meta.data[["sample"]])[["atac1"]] + table(combined@meta.data[["sample"]])[["atac2"]]
+combined_saline_counts <- combined@assays[["ATAC"]]@counts[,1:saline_length]
+
+counts_per_cell <- colSums(combined@assays[["ATAC"]]@counts)
+mean_saline_counts_per_cell <- mean(counts_per_cell[1:saline_length])
+mean_freshwater_counts_per_cell <- mean(counts_per_cell[-(1:saline_length)])
+coverage_imbalance_ratio <- mean_freshwater_counts_per_cell/mean_saline_counts_per_cell
+
+#trying more memory efficient method by working directly on the internal vectors of the dgCMatrix
+require(scuttle)
+combined_saline_counts <- combined@assays[["ATAC"]]@counts[,1:saline_length] # USING NORMALIZED DATA INSTEAD OF RAW COUNTS 
+combined_saline_downsampled <- downsampleMatrix(combined_saline_counts, prop = coverage_imbalance_ratio, bycol=TRUE) 
+# This one workes super efficiently!
+
+comb_counts_matrix <- cbind(
+  combined_saline_downsampled, 
+  combined@assays[["ATAC"]]@counts[,-(1:saline_length)]
+)
+
+counts_per_cell <- colSums(comb_counts_matrix)
+saline_length <- table(combined@meta.data[["sample"]])[["atac1"]] + table(combined@meta.data[["sample"]])[["atac2"]]
+mean_saline_counts_per_cell_downsampled <- mean(counts_per_cell[1:saline_length])
+mean_freshwater_counts_per_cell <- mean(counts_per_cell[-(1:saline_length)])
+# the downsampling did not work in regard to counts, mean counts per cell are different for saline and freshwater
+
+num_saline_cells <- sum(table(combined@meta.data[["sample"]])[c("atac1", "atac2")])
+
+l <- num_saline_cells + 1
+r <- num_saline_cells + 6
+
+l_saline = 1
+r_saline = num_saline_cells 
+l_freshwater = num_saline_cells + 1
+r_freshwater = ncol(comb_counts_matrix)
+
+
+atac_output <- apply(comb_counts_matrix, 1, function(row){
+  # message(paste0("row = ", row))
+  x <- row[1:r_saline]
+  x <- x[ is.finite(x) & x > 0]
+  y <- row[l_freshwater:r_freshwater]
+  y <- y[ is.finite(y) & y > 0]
+  if(length(x) > 10 & length(y) > 10){
+    saline_var <- var(x)
+    freshwater_var <- var(y)
+    f.test.res <- var.test(x, y)
+    return(data.frame(f_ratio = f.test.res$estimate, p_val = f.test.res$p.value, saline_var = saline_var, freshwater_var = freshwater_var))
+  }else{
+    return(data.frame(f_ratio = NA, p_val = NA, saline_var = NA, freshwater_var = NA))
+  }
+})
+
+saline_vs_freshwater_varience_table <- do.call(rbind,atac_output)
+saline_vs_freshwater_varience_table %>% 
+  dplyr::filter(p_val < 0.05 & f_ratio > 0 & f_ratio != Inf & p_val != 0) %>% 
+  rownames_to_column(var = "peak") -> saline_vs_freshwater_varience_table_filtered_downsampled
+
+load(file = "data/scATAC/ga_granges_annotation.RData")
+annotations <- ga_tx_merged
+genome(annotations) <- "gasAcu1"
+
+# add the gene information to the object
+Annotation(combined) <- annotations
+
+
+# annotate peaks vs cells matrix with genes
+peaks_in_combined_obj_annotated <- ClosestFeature(
+  object = combined,
+  regions = StringToGRanges(rownames(combined), sep = c("-", "-"))
+)
+
+saline_vs_freshwater_varience_table_filtered_downsampled_annotated <- inner_join(saline_vs_freshwater_varience_table_filtered_downsampled, peaks_in_combined_obj_annotated, by = c("peak" = "query_region"))
+
+
+```
+
+```{r}
+saline_vs_freshwater_varience_table %>% 
+  dplyr::filter(is.finite(f_ratio), f_ratio > 0) %>% 
+  rownames_to_column(var = "peak") %>% ggplot( aes(x=f_ratio))+
+  geom_histogram(binwidth = 0.25, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(f_ratio)), color="red", linetype="dashed", size=1) +
+    # geom_vline(aes(xintercept=mean(f_ratio)), color="blue", linetype="dashed", size=1) +
+  coord_cartesian(xlim = c(0, 5)) +
+  theme_classic(base_size = 20) +
+  xlab("Ratio of open chromatin variances\n(marine/freshwater)") +
+  ylab("Number of peaks") -> p6
+
+pdf(file = "plots/for_article/scATAC_f_ratio_peaks_histogram_unfiltered_count_normalized_DOWNSAMPLED.pdf")
+p6
+dev.off()
+p6
+```
+
+```{r}
+saline_vs_freshwater_varience_table %>% 
+  dplyr::filter(is.finite(f_ratio), f_ratio > 0) %>% 
+  rownames_to_column(var = "peak") %>% ggplot( aes(x=log10(f_ratio)))+
+  geom_histogram(binwidth = 0.1, fill = "#a2b1ba", color = "#899ba7") +
+  geom_vline(aes(xintercept=median(log10(f_ratio))), color="red", linetype="dashed", size=1) +
+    # geom_vline(aes(xintercept=mean(f_ratio)), color="blue", linetype="dashed", size=1) +
+  # coord_cartesian(xlim = c(0, 5)) +
+  theme_classic(base_size = 20) +
+  xlab("Ratio of open chromatin variances\n(marine/freshwater)") +
+  ylab("Number of peaks") -> p6
+
+pdf(file = "plots/for_article/scATAC_f_ratio_peaks_histogram_unfiltered_count_normalized_DOWNSAMPLED_LOG.pdf")
+p6
+dev.off()
+p6
+```

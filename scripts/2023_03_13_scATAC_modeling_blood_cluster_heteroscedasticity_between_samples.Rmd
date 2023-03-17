@@ -1,0 +1,139 @@
+---
+title: "Estimating variance difference between pseudo-bulk data from blood cluster between samples scATAC. (modeling blood cluster heteroscedasticity between samples)"
+date: "`r Sys.Date()`"
+author: "Artemiy Golden"
+output:
+  rmdformats::robobook:
+    code_folding: hide
+    self_contained: true
+    thumbnails: false
+    lightbox: true
+---
+
+
+```{r setup, include=FALSE}
+library(knitr)
+## Global options
+options(max.print = "75")
+knitr::opts_chunk$set(
+  echo = TRUE, cache = TRUE, prompt = FALSE,
+  tidy = FALSE, comment = NA,
+  message = FALSE, warning = FALSE
+)
+opts_knit$set(width = 75)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
+
+```{r, results = 'hide'}
+library(tidyverse)
+library(Seurat)
+library(ggpubr)
+library(venn)
+library(clusterProfiler)
+library(biomaRt)
+library(enrichplot)
+library(Signac)
+library(limma)
+library(edgeR)
+library(scuttle)
+```
+
+
+
+
+
+```{r}
+load(file = "data/scATAC/combined_scATAC_samples_obj.RData")
+
+```
+
+```{r}
+# Creating downsampled object
+minimum_cells_per_sample <- min(table(combined@meta.data[["sample"]]))
+ratio_of_downsampling_compared_to_1_sample = 1
+
+cell_id_sample <- tibble(
+  id = names(Idents(combined)),
+  sample = combined@meta.data[["sample"]])
+
+cell_id_sample_downsampled <- cell_id_sample %>%
+  dplyr::filter(sample != "atac3") %>% 
+  dplyr::group_by(sample) %>%
+  slice_sample(n = minimum_cells_per_sample * ratio_of_downsampling_compared_to_1_sample) %>% 
+  full_join(y = cell_id_sample[cell_id_sample$sample == "atac3",])
+
+obj_downsampled <- subset(combined, cells = cell_id_sample_downsampled$id)
+```
+
+
+```{r}
+pseudo_bulk_by_sample <- sumCountsAcrossCells(combined@assays$ATAC@counts, combined@meta.data[["sample"]])
+```
+
+```{r}
+DGEList(as.matrix(pseudo_bulk_by_sample@assays@data@listData[["sum"]])) -> y
+y <- calcNormFactors(y)
+y$samples$group <- pseudo_bulk_by_sample@colData@rownames
+
+cd <- c("saline", "saline", "freshwater", "freshwater")
+model.matrix(~0+cd) -> design
+```
+
+VoomByGroup function is used to estimate the variance per pseudo-bulk sample. It was taken from the following pre-print: https://www.biorxiv.org/content/biorxiv/early/2022/09/14/2022.09.12.507511.full.pdf
+Source code for VoomByGroup was found at: https://github.com/YOU-k/voomByGroup
+BCV - biological coefficient of variation
+
+
+## No downsampling
+ 
+
+```{r}
+source("external/voomByGroup/voomByGroup.R")
+voomByGroup(y,design = design, group = cd, plot = "combine") -> y_vbg
+```
+
+## Downsampled to the sample with minimal number of cells
+ 
+ 
+
+```{r}
+pseudo_bulk_by_sample <- sumCountsAcrossCells(obj_downsampled@assays$ATAC@counts, obj_downsampled@meta.data[["sample"]])
+DGEList(as.matrix(pseudo_bulk_by_sample@assays@data@listData[["sum"]])) -> y
+y <- calcNormFactors(y)
+y$samples$group <- pseudo_bulk_by_sample@colData@rownames
+
+cd <- c("saline", "saline", "freshwater", "freshwater")
+model.matrix(~0+cd) -> design
+
+source("external/voomByGroup/voomByGroup.R")
+voomByGroup(y,design = design, group = cd, plot = "combine") -> y_vbg
+```
+
+## Downsampled, pseudo-bulk with 3 technical replicates per each sample
+ 
+After downsampling each of the samples was randomly divided into 3 technical replicates.
+
+```{r}
+# Create pseudo-bulk replicates
+ids <- tibble(sample = obj_downsampled@meta.data[["sample"]],
+              replicate = rep(sample(c("_a", "_b", "_c"), length(sample) / 4, replace = TRUE), 4)) %>% 
+  mutate(id = paste0(sample, replicate)) %>% 
+  pull(id)
+pseudo_bulk_by_sample <- sumCountsAcrossCells(obj_downsampled@assays$ATAC@counts, ids)
+
+DGEList(as.matrix(pseudo_bulk_by_sample@assays@data@listData[["sum"]])) -> y
+y <- calcNormFactors(y)
+y$samples$group <- pseudo_bulk_by_sample@colData@rownames
+
+cd <- c(rep("saline", 6), rep("freshwater", 6))
+model.matrix(~0+cd) -> design
+
+source("external/voomByGroup/voomByGroup.R")
+voomByGroup(y,design = design, group = cd, plot = "combine") -> y_vbg
+```
+
+
+
+
+
+
